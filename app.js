@@ -131,9 +131,15 @@
     if (/^https?:\/\//.test(href)){
       const ok = window.confirm(
         `${title || "This game"} opens in a new tab.\n\n` +
-        "Heads up: that new tab shows the game's real title and icon, not the Compass disguise — close it when you're done."
+        "Heads up: that new tab shows the game's real title and icon, not the Compass disguise — close it when you're done.\n\n" +
+        "A small chat window will open alongside it so you can keep talking while you play."
       );
-      if (ok) window.open(href, "_blank", "noopener");
+      if (!ok) return;
+      // Opened first so it lands behind the game tab that follows, and
+      // reuses the same named window on repeat clicks instead of
+      // spawning duplicates.
+      window.open("chatpopup.html?popup=1", "moongames_chat", "width=380,height=640,noopener");
+      window.open(href, "_blank", "noopener");
       return;
     }
     playerTitle.textContent = title || "";
