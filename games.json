@@ -1697,5 +1697,16 @@
       "racing",
       "arcade"
     ]
+  },
+  {
+    "id": "bulletforce",
+    "href": "https://classroom8.github.io/bullet-force/",
+    "img": "https://new66ez.github.io/img/bulletforce/bullet-force.png",
+    "title": "Bullet Force",
+    "genres": [
+      "action",
+      "fps",
+      "multiplayer"
+    ]
   }
 ]
