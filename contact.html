@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link id="dynamic-favicon" rel="icon" href="resources/download.png">
+<title class="p1">Home | Compass</title>
+<meta name="application-name" content="Document1 - Word">
+<meta name="apple-mobile-web-app-title" content="Document1 - Word">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="resources/word.png">
+<meta name="description" content="Contact Moon Games.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#5e5ce6">
+<link rel="stylesheet" href="styles.css">
+<script>
+function applyBrandMode() {
+    var mode = localStorage.getItem("brandMode") || "normal";
+    var favicon = document.getElementById("dynamic-favicon");
+    if (mode === "alt") {
+        document.title = "Dashboard";
+        favicon.href = "resources/canvas.png?v=1";
+    } else {
+        document.title = "Home | Compass";
+        favicon.href = "resources/download.png?v=1";
+    }
+}
+applyBrandMode();
+</script>
+<style>
+  .page-hero{ padding: var(--s-9) 0 var(--s-6); }
+  .page-hero h1{ font-size: clamp(30px,5vw,44px); letter-spacing:-.02em; margin:0 0 var(--s-3); }
+  .page-hero p{ color: var(--text-secondary); font-size: 17px; max-width: 620px; }
+  .contact-grid{ display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: var(--s-4); padding-bottom: var(--s-9); }
+  .contact-card{
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-l); padding: var(--s-6);
+    transition: transform .2s var(--ease), box-shadow .2s var(--ease);
+  }
+  .contact-card:hover{ transform: translateY(-4px); box-shadow: 0 16px 32px hsl(var(--shadow-color) / .14); }
+  .contact-card h3{ margin: 0 0 var(--s-2); font-size: 16px; }
+  .contact-card p{ color: var(--text-secondary); font-size: 14px; margin: 0 0 var(--s-4); }
+</style>
+</head>
+<body>
+
+<a class="sr-only" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html" aria-label="Moon Games home">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Moon Games
+    </a>
+    <div class="nav-actions" style="margin-left:auto">
+      <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode" title="Toggle appearance">
+        <span class="theme-icon">
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8L6 18M18 6l1.8-1.8"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>
+        </span>
+      </button>
+      <a class="pill-btn" href="index.html">Back to games</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="container">
+    <section class="page-hero">
+      <h1>Get in touch</h1>
+      <p>Found a broken game, want to suggest one, or have a general question? Pick a channel below.</p>
+    </section>
+
+    <section class="contact-grid">
+      <div class="contact-card">
+        <h3>Discord</h3>
+        <p>Fastest way to report a broken game or chat with other players.</p>
+        <a class="pill-btn primary" href="https://discord.gg/f9psmrwc7H" target="_blank" rel="noopener">Join server</a>
+      </div>
+      <div class="contact-card">
+        <h3>Suggest a game</h3>
+        <p>Send a link and we'll consider adding it to the library.</p>
+        <a class="pill-btn" href="https://forms.gle/P64SEtvX46VTjWbt9" target="_blank" rel="noopener">Open form</a>
+      </div>
+      <div class="contact-card">
+        <h3>Guestbook</h3>
+        <p>Leave a note for other visitors.</p>
+        <a class="pill-btn" href="https://harshulmoon.atabook.org/?page=1" target="_blank" rel="noopener">Sign guestbook</a>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-bottom">
+      <span>© <span id="year"></span> Moon Games</span>
+      <a href="index.html">Home</a>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast"></div>
+<script src="chrome.js"></script>
+</body>
+</html>

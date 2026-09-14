@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link id="dynamic-favicon" rel="icon" href="resources/download.png">
+<title class="p1">Home | Compass</title>
+<meta name="application-name" content="Document1 - Word">
+<meta name="apple-mobile-web-app-title" content="Document1 - Word">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="resources/word.png">
+<meta name="description" content="About Moon Games — a fast, ad-free portal for free browser games.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#5e5ce6">
+<link rel="stylesheet" href="styles.css">
+<script>
+function applyBrandMode() {
+    var mode = localStorage.getItem("brandMode") || "normal";
+    var favicon = document.getElementById("dynamic-favicon");
+    if (mode === "alt") {
+        document.title = "Dashboard";
+        favicon.href = "resources/canvas.png?v=1";
+    } else {
+        document.title = "Home | Compass";
+        favicon.href = "resources/download.png?v=1";
+    }
+}
+applyBrandMode();
+</script>
+<style>
+  .page-hero{ padding: var(--s-9) 0 var(--s-6); }
+  .page-hero h1{ font-size: clamp(30px,5vw,44px); letter-spacing:-.02em; margin:0 0 var(--s-3); }
+  .page-hero p{ color: var(--text-secondary); font-size: 17px; max-width: 620px; }
+  .prose{ padding-bottom: var(--s-9); max-width: 680px; }
+  .prose p{ color: var(--text-secondary); line-height: 1.7; font-size: 15.5px; }
+  .credit-card{
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-l); padding: var(--s-6); margin: var(--s-6) 0;
+  }
+  .credit-card h3{ margin: 0 0 var(--s-2); font-size: 17px; }
+  .credit-card a{ color: var(--accent-2); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<a class="sr-only" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html" aria-label="Moon Games home">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Moon Games
+    </a>
+    <div class="nav-actions" style="margin-left:auto">
+      <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode" title="Toggle appearance">
+        <span class="theme-icon">
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8L6 18M18 6l1.8-1.8"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>
+        </span>
+      </button>
+      <a class="pill-btn" href="index.html">Back to games</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="container">
+    <section class="page-hero">
+      <h1>About Moon Games</h1>
+      <p>A calm, fast, ad-free home for 160+ free browser games — built for players who just want to click and play.</p>
+    </section>
+
+    <section class="prose" id="credits">
+      <p>Moon Games is a games portal: it doesn't host most of the games itself. Instead it's a curated index that links out to games built and hosted by their original creators and community mirrors, wrapped in a fast, distraction-free interface with search, genre filters, favorites, and a fullscreen player.</p>
+
+      <div class="credit-card">
+        <h3>Credits</h3>
+        <p style="margin:0">Game library, embeds and hosting mirrors sourced from the open-source <a href="https://github.com/harshulgoon/harshulgoon.github.io" target="_blank" rel="noopener">harshulgoon.github.io</a> project (MIT licensed). Moon Games is an independent front-end built on top of that same game catalog.</p>
+      </div>
+
+      <p>Nothing here is affiliated with the original publishers of the games listed. If you're a rights holder with a concern, reach out via the <a href="contact.html">contact page</a>.</p>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-bottom">
+      <span>© <span id="year"></span> Moon Games</span>
+      <a href="index.html">Home</a>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast"></div>
+<script src="chrome.js"></script>
+</body>
+</html>
