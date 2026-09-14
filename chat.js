@@ -39,12 +39,6 @@ const ICON_CLOSE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const ICON_GIF = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><text x="12" y="15" font-size="8" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">GIF</text></svg>`;
 const ICON_SEND = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
-// Popup mode: a standalone window (chatpopup.html?popup=1) opened
-// alongside a game that plays in its own tab, so chat stays available
-// even when the game itself can't be embedded in-page. No FAB needed —
-// the whole window IS the chat, open from the start.
-const isPopupMode = new URLSearchParams(location.search).get("popup") === "1";
-
 const fab = document.createElement("button");
 fab.className = "chat-fab";
 fab.id = "chatFab";
@@ -93,11 +87,6 @@ panel.innerHTML = `
   </div>
 `;
 document.body.appendChild(panel);
-
-if (isPopupMode){
-  fab.hidden = true;
-  panel.classList.add("popup-mode");
-}
 
 const els = {
   fab, panel,
@@ -149,10 +138,6 @@ els.closeBtn.addEventListener("click", () => setOpen(false));
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && isOpen) setOpen(false);
 });
-if (isPopupMode){
-  els.closeBtn.hidden = true; // nothing to "close" back to in a standalone window
-  setOpen(true);
-}
 
 /* ---------------- Firebase ---------------- */
 const app = initializeApp(firebaseConfig);

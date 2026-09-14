@@ -650,20 +650,6 @@ button{ font: inherit; color: inherit; }
 }
 .chat-panel.open{ transform: scale(1) translateY(0); opacity: 1; pointer-events: auto; }
 
-/* A standalone popup window (chatpopup.html?popup=1) — the whole
-   window is the chat, so it fills the viewport instead of floating
-   as a corner drawer. */
-.chat-panel.popup-mode{
-  right: 0; left: 0; top: 0; bottom: 0;
-  width: 100%; height: 100%;
-  max-width: 100%;
-  border: none;
-  border-radius: 0;
-  transform-origin: center;
-  transform: none;
-}
-.chat-panel.popup-mode.open{ transform: none; }
-
 @media (max-width: 560px){
   .chat-panel{
     right: 0; left: 0; bottom: 0;
