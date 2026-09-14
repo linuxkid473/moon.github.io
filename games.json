@@ -1334,8 +1334,11 @@
     "id": "ragdollarcher",
     "href": "iframes/ragdollarcher.html",
     "img": "resources/ragdollarcher.webp",
-    "title": "Ragdoll Archer",
-    "genres": []
+    "title": "Ragdoll Archers",
+    "genres": [
+      "action",
+      "arcade"
+    ]
   },
   {
     "id": "repo",
@@ -1652,6 +1655,37 @@
     "genres": [
       "racing",
       "arcade"
+    ]
+  },
+  {
+    "id": "slicemaster",
+    "href": "iframes/slicemaster.html",
+    "img": "https://slice-master.github.io/img/slice%20master.png",
+    "title": "Slice Master",
+    "genres": [
+      "arcade",
+      "skill"
+    ]
+  },
+  {
+    "id": "stonegrass",
+    "href": "iframes/stonegrass.html",
+    "img": "https://cdn.jsdelivr.net/gh/freebuisness/covers@main/584-a.png",
+    "title": "Stone Grass: Mowing Simulator",
+    "genres": [
+      "simulation",
+      "idle"
+    ]
+  },
+  {
+    "id": "bowmasters",
+    "href": "iframes/bowmasters.html",
+    "img": "https://cdn.jsdelivr.net/gh/freebuisness/covers@main/0.png",
+    "title": "Bowmasters: Archery Simulator",
+    "genres": [
+      "action",
+      "arcade",
+      "multiplayer"
     ]
   }
 ]
