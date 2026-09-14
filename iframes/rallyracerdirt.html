@@ -35,13 +35,29 @@ applyBrandMode();
             border: none;
         }
 
-        iframe {
-            display: block;
+        /* The source page adds its own branded bottom bar ("TBG95") inside
+           the game frame. We don't control that page, so it's cropped out
+           here by overflow-hiding a wrapper and overhanging the iframe
+           past its bottom edge by the bar's height. */
+        .crop-wrap {
+            position: relative;
             width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .crop-wrap iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% + 60px);
             border: none;
             overflow-y: auto;
             overflow-x: hidden;
         }
     </style>
-  <iframe src="https://rallyracerdirt.github.io/game-RallyRacerDirt/rally-racer-dirt/" width="100%" height="100%" allowfullscreen frameborder="0"></iframe>
+  <div class="crop-wrap">
+    <iframe src="https://rallyracerdirt.github.io/game-RallyRacerDirt/rally-racer-dirt/" allowfullscreen frameborder="0"></iframe>
+  </div>
 </html>
