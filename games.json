@@ -1687,5 +1687,15 @@
       "arcade",
       "multiplayer"
     ]
+  },
+  {
+    "id": "supertuxkart",
+    "href": "https://supertuxkart.pages.dev/",
+    "img": "https://raw.githubusercontent.com/supertuxkart/stk-code/master/data/gui/icons/logo.png",
+    "title": "SuperTuxKart",
+    "genres": [
+      "racing",
+      "arcade"
+    ]
   }
 ]

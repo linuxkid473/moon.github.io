@@ -136,7 +136,7 @@
     playerBody.innerHTML = `<div class="player-loading"><div class="spinner"></div><span>Loading ${escapeHtml(title||"game")}…</span></div>`;
     const iframe = document.createElement("iframe");
     iframe.src = href;
-    iframe.allow = "fullscreen; autoplay; gamepad; clipboard-write";
+    iframe.allow = "fullscreen; autoplay; gamepad; clipboard-write; cross-origin-isolated";
     iframe.allowFullscreen = true;
     iframe.addEventListener("load", () => {
       playerBody.querySelector(".player-loading")?.remove();
