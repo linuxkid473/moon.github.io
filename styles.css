@@ -405,6 +405,17 @@ button{ font: inherit; color: inherit; }
   100%{ background-position: -50% 0; }
 }
 
+.card-external{
+  position: absolute; top: 8px; right: 8px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+}
+.card-external svg{ width: 13px; height: 13px; }
+
 .card-play{
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;

@@ -24,16 +24,19 @@
   const genreCountEl = document.getElementById("genreCount");
 
   const SVG_PLAY = `<svg viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="11" fill="rgba(255,255,255,0.18)"/><path d="M10 8.5l6 3.5-6 3.5v-7z" fill="white"/></svg>`;
+  const SVG_EXTERNAL = `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
 
   function cardTemplate(game){
     const genreLabel = game.genres[0] || "";
+    const isExternal = /^https?:\/\//.test(game.href);
     return `
     <article class="card" tabindex="0" role="button"
-      aria-label="Play ${escapeHtml(game.title)}"
+      aria-label="Play ${escapeHtml(game.title)}${isExternal ? " (opens in a new tab)" : ""}"
       data-id="${game.id}" data-href="${game.href}" data-title="${escapeHtml(game.title)}">
       <div class="card-thumb skeleton">
         <img loading="lazy" src="${game.img}" alt="" onerror="this.closest('.card-thumb').classList.add('skeleton'); this.style.display='none';"
              onload="this.classList.add('loaded'); this.closest('.card-thumb').classList.remove('skeleton');">
+        ${isExternal ? `<span class="card-external" title="Opens in a new tab">${SVG_EXTERNAL}</span>` : ""}
         <div class="card-play">${SVG_PLAY}</div>
       </div>
       <div class="card-body">
@@ -121,6 +124,14 @@
   let currentIframe = null;
 
   function openPlayer(href, title){
+    // A handful of games don't tolerate being nested two iframes deep
+    // (our modal -> their wrapper -> the actual game) even though they
+    // work fine standalone — those get an external href in games.json
+    // and open in a new tab instead of the in-page player.
+    if (/^https?:\/\//.test(href)){
+      window.open(href, "_blank", "noopener");
+      return;
+    }
     playerTitle.textContent = title || "";
     playerBody.innerHTML = `<div class="player-loading"><div class="spinner"></div><span>Loading ${escapeHtml(title||"game")}…</span></div>`;
     const iframe = document.createElement("iframe");
