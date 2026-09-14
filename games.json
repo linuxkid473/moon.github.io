@@ -1708,5 +1708,16 @@
       "fps",
       "multiplayer"
     ]
+  },
+  {
+    "id": "hazmobfps",
+    "href": "iframes/hazmobfps.html",
+    "img": "https://hazmobfps.io/og-image.png",
+    "title": "Hazmob FPS: Online Strike",
+    "genres": [
+      "action",
+      "fps",
+      "multiplayer"
+    ]
   }
 ]
