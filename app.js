@@ -8,15 +8,6 @@
   }, { passive: true });
   const toast = window.toast || (() => {});
 
-  /* ---------------- Favorites ---------------- */
-  const FAV_KEY = "moongames.favorites";
-  const getFavs = () => {
-    try { return new Set(JSON.parse(localStorage.getItem(FAV_KEY) || "[]")); }
-    catch { return new Set(); }
-  };
-  const saveFavs = (set) => localStorage.setItem(FAV_KEY, JSON.stringify([...set]));
-  let favorites = getFavs();
-
   /* ---------------- State ---------------- */
   let ALL_GAMES = [];
   let activeGenre = "all";
@@ -32,11 +23,9 @@
   const gameCountEl = document.getElementById("gameCount");
   const genreCountEl = document.getElementById("genreCount");
 
-  const SVG_STAR = `<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
   const SVG_PLAY = `<svg viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="11" fill="rgba(255,255,255,0.18)"/><path d="M10 8.5l6 3.5-6 3.5v-7z" fill="white"/></svg>`;
 
   function cardTemplate(game){
-    const isFav = favorites.has(game.id);
     const genreLabel = game.genres[0] || "";
     return `
     <article class="card" tabindex="0" role="button"
@@ -45,7 +34,6 @@
       <div class="card-thumb skeleton">
         <img loading="lazy" src="${game.img}" alt="" onerror="this.closest('.card-thumb').classList.add('skeleton'); this.style.display='none';"
              onload="this.classList.add('loaded'); this.closest('.card-thumb').classList.remove('skeleton');">
-        <button class="fav-btn ${isFav ? "active" : ""}" aria-label="${isFav ? "Remove from favorites" : "Add to favorites"}" data-fav="${game.id}">${SVG_STAR}</button>
         <div class="card-play">${SVG_PLAY}</div>
       </div>
       <div class="card-body">
@@ -60,8 +48,7 @@
   }
 
   function matches(game){
-    if (activeGenre === "favorites" && !favorites.has(game.id)) return false;
-    if (activeGenre !== "all" && activeGenre !== "favorites" && !game.genres.includes(activeGenre)) return false;
+    if (activeGenre !== "all" && !game.genres.includes(activeGenre)) return false;
     if (query){
       const hay = (game.title + " " + game.genres.join(" ")).toLowerCase();
       if (!hay.includes(query)) return false;
@@ -84,7 +71,6 @@
     const sorted = Object.keys(counts).sort((a,b) => counts[b]-counts[a]);
     const chips = [
       { id: "all", label: "All Games" },
-      { id: "favorites", label: "★ Favorites" },
       ...sorted.map(g => ({ id: g, label: g }))
     ];
     chipRow.innerHTML = chips.map(c =>
@@ -114,19 +100,7 @@
     render();
   });
 
-  /* click delegation on grid: favorite toggle vs open game */
   grid?.addEventListener("click", (e) => {
-    const favBtn = e.target.closest("[data-fav]");
-    if (favBtn){
-      e.stopPropagation();
-      const id = favBtn.dataset.fav;
-      if (favorites.has(id)) favorites.delete(id); else favorites.add(id);
-      saveFavs(favorites);
-      favBtn.classList.toggle("active");
-      favBtn.setAttribute("aria-label", favorites.has(id) ? "Remove from favorites" : "Add to favorites");
-      if (activeGenre === "favorites") render();
-      return;
-    }
     const card = e.target.closest(".card");
     if (card) openPlayer(card.dataset.href, card.dataset.title);
   });
