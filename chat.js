@@ -3,7 +3,8 @@
    rebuilt as a site-wide, gameplay-integrated drawer with a matching UI. */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getDatabase, ref, push, onChildAdded, serverTimestamp, limitToLast, query
+  getDatabase, ref, push, onChildAdded, onChildRemoved, serverTimestamp,
+  limitToLast, query, remove
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 const firebaseConfig = {
@@ -154,6 +155,56 @@ onChildAdded(recentMessagesQuery, (snapshot) => {
 });
 // crude "first batch has loaded" flag so we don't count history as unread
 setTimeout(() => { hasReceivedFirstBatch = true; }, 1200);
+
+// Individual messages are never deleted anywhere else in this app, so any
+// removal event only ever means the nightly clear below just ran — reset
+// the panel for every client watching, not just the one that triggered it.
+onChildRemoved(recentMessagesQuery, () => {
+  els.messages.innerHTML = "";
+  els.messages.appendChild(els.empty);
+});
+
+/* ---------------- Nightly clear at Melbourne midnight ----------------
+   The shared DB's rules validate message *shape* on write (confirmed via
+   testing: push()ing a normal {username,text/gifUrl,timestamp} succeeds,
+   writing anything else — e.g. a "last cleared" marker — is rejected with
+   permission_denied), so there's no way to persist "did today's clear
+   already happen?" anywhere. That rules out a "catch up by inspecting
+   existing message age" strategy too: this DB holds ~360k historic
+   messages, essentially all older than today, so any such check would
+   read as "overdue" and wipe the entire backlog the instant this code
+   first loads — not a nightly reset, a one-time accidental mass delete.
+
+   So this only ever clears from a precisely scheduled timer that fires
+   at an actual future Melbourne-midnight instant — never by evaluating
+   "how old is the oldest message" on page load. Trade-off: if literally
+   no visitor's tab is open at the exact midnight moment, that night's
+   clear is skipped rather than caught up later — a deliberate, safer
+   choice than risking the whole history on a heuristic. */
+function msUntilNextMelbourneMidnight(){
+  const now = new Date();
+  const parts = {};
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: "Australia/Melbourne", hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit"
+  }).formatToParts(now).forEach(p => { if (p.type !== "literal") parts[p.type] = p.value; });
+  // Melbourne's current UTC offset, derived by re-reading its wall-clock
+  // time as if it were UTC and comparing to the real instant — handles
+  // daylight saving automatically since it asks the platform, not a table.
+  const wallClockAsUTC = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  const offsetMs = wallClockAsUTC - now.getTime();
+  const todaysMelbourneMidnightUTC = Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0) - offsetMs;
+  return todaysMelbourneMidnightUTC + 86400000 - now.getTime() + 1000; // +1s buffer past the boundary
+}
+
+(function scheduleNightlyClear(){
+  setTimeout(async () => {
+    try { await remove(messagesRef); }
+    catch (err) { console.error("[chat] nightly clear failed", err); }
+    scheduleNightlyClear();
+  }, msUntilNextMelbourneMidnight());
+})();
 
 function renderMessage(message){
   if (!message) return;
