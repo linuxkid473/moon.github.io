@@ -43,8 +43,14 @@ const fab = document.createElement("button");
 fab.className = "chat-fab";
 fab.id = "chatFab";
 fab.setAttribute("aria-label", "Open chat");
+fab.setAttribute("aria-expanded", "false");
 fab.innerHTML = `${ICON_CHAT}<span class="badge" id="chatBadge">0</span>`;
 document.body.appendChild(fab);
+
+const unreadAnnouncer = document.createElement("div");
+unreadAnnouncer.className = "sr-only";
+unreadAnnouncer.setAttribute("aria-live", "polite");
+document.body.appendChild(unreadAnnouncer);
 
 const panel = document.createElement("div");
 panel.className = "chat-panel";
@@ -59,21 +65,21 @@ panel.innerHTML = `
       <span>Live &middot; everyone playing right now</span>
     </div>
     <div class="spacer"></div>
-    <button class="icon-btn" id="chatCloseBtn" aria-label="Close chat" style="width:32px;height:32px">${ICON_CLOSE}</button>
+    <button class="icon-btn" id="chatCloseBtn" aria-label="Close chat">${ICON_CLOSE}</button>
   </div>
   <div class="chat-messages" id="chatMessages">
     <div class="chat-empty" id="chatEmpty">No messages yet &mdash; say hi 👋</div>
   </div>
   <div class="chat-inputbar">
     <div class="chat-username-row">
-      <input type="text" id="chatUsername" placeholder="Your name" maxlength="20">
+      <input type="text" id="chatUsername" placeholder="Your name" aria-label="Your name" maxlength="20">
       <span class="char-count" id="chatCharCount"></span>
     </div>
     <div style="position:relative">
       <div class="chat-gif-picker" id="chatGifPicker">
         <div class="chat-gif-picker-head">
           <input type="text" id="chatGifSearch" placeholder="Search GIFs&hellip;">
-          <button class="icon-btn" id="chatGifCloseBtn" style="width:32px;height:32px" aria-label="Close GIF picker">${ICON_CLOSE}</button>
+          <button class="icon-btn" id="chatGifCloseBtn" aria-label="Close GIF picker">${ICON_CLOSE}</button>
         </div>
         <div class="chat-gif-grid" id="chatGifGrid"><div class="chat-gif-status">Loading trending GIFs&hellip;</div></div>
         <div class="chat-gif-credit">Powered by GIPHY</div>
@@ -109,6 +115,23 @@ const els = {
 let isOpen = false;
 let unread = 0;
 let hasReceivedFirstBatch = false;
+let lastFocused = null;
+
+function trapFocus(e){
+  if (e.key !== "Tab") return;
+  const focusable = [...els.panel.querySelectorAll('button, [href], input, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.offsetParent !== null);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first){
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last){
+    e.preventDefault();
+    first.focus();
+  }
+}
 
 const savedName = localStorage.getItem("chatUsername");
 if (savedName) els.username.value = savedName;
@@ -121,17 +144,25 @@ function setOpen(open){
   els.panel.classList.toggle("open", open);
   els.fab.setAttribute("aria-expanded", String(open));
   if (open){
+    lastFocused = document.activeElement;
     unread = 0;
     updateBadge();
     setTimeout(() => els.input.focus(), 200);
     els.messages.scrollTop = els.messages.scrollHeight;
+    els.panel.addEventListener("keydown", trapFocus);
   } else {
     closeGifPicker();
+    els.panel.removeEventListener("keydown", trapFocus);
+    if (lastFocused && document.contains(lastFocused)) lastFocused.focus();
+    lastFocused = null;
   }
 }
 function updateBadge(){
   els.badge.textContent = unread > 9 ? "9+" : String(unread);
   els.badge.classList.toggle("show", unread > 0 && !isOpen);
+  if (unread > 0 && !isOpen){
+    unreadAnnouncer.textContent = `${unread} new message${unread === 1 ? "" : "s"}`;
+  }
 }
 els.fab.addEventListener("click", () => setOpen(!isOpen));
 els.closeBtn.addEventListener("click", () => setOpen(false));

@@ -31,7 +31,7 @@
   --surface-2: #f0f0f3;
   --text-primary: #1d1d1f;
   --text-secondary: #6e6e73;
-  --text-tertiary: #86868b;
+  --text-tertiary: #6f6f74;
   --border: rgba(0,0,0,.08);
   --border-strong: rgba(0,0,0,.14);
   --shadow-color: 220 3% 15%;
@@ -202,9 +202,9 @@ button{ font: inherit; color: inherit; }
   .brand{ font-size: 15px; }
 }
 @media (max-width: 420px){
-  .icon-btn{ width: 36px; height: 36px; }
-  .icon-btn svg{ width: 17px; height: 17px; }
-  .nav-actions{ gap: 6px; }
+  .icon-btn{ width: 44px; height: 44px; }
+  .icon-btn svg{ width: 18px; height: 18px; }
+  .nav-actions{ gap: 4px; }
 }
 
 .icon-btn{
@@ -321,6 +321,8 @@ button{ font: inherit; color: inherit; }
   scrollbar-width: none;
   padding: 2px var(--s-6) 8px;
   margin: 0 calc(var(--s-6) * -1);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--s-6), #000 calc(100% - var(--s-6)), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--s-6), #000 calc(100% - var(--s-6)), transparent 100%);
 }
 .chip-row::-webkit-scrollbar{ display: none; }
 .chip{
@@ -583,7 +585,7 @@ button{ font: inherit; color: inherit; }
 .footer-col a{
   display: block;
   color: var(--text-secondary);
-  padding: 6px 0;
+  padding: 10px 0;
   transition: color .15s var(--ease);
 }
 .footer-col a:hover{ color: var(--text-primary); }
@@ -772,9 +774,9 @@ button{ font: inherit; color: inherit; }
   transition: box-shadow .2s var(--ease);
 }
 .chat-row textarea:focus{ box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-2) 16%, transparent); }
-.chat-row .icon-btn{ width: 38px; height: 38px; flex: none; }
+.chat-row .icon-btn{ width: 44px; height: 44px; flex: none; }
 .chat-row .send{
-  width: 38px; height: 38px; border-radius: 50%; flex: none;
+  width: 44px; height: 44px; border-radius: 50%; flex: none;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   border: none; color: #fff; cursor: pointer;
   display: flex; align-items: center; justify-content: center;

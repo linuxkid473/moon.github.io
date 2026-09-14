@@ -18,10 +18,13 @@
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }
 
-  document.getElementById("themeToggle")?.addEventListener("click", () => {
+  const themeToggleBtn = document.getElementById("themeToggle");
+  themeToggleBtn?.setAttribute("aria-pressed", String(currentEffectiveTheme() === "dark"));
+  themeToggleBtn?.addEventListener("click", () => {
     const next = currentEffectiveTheme() === "dark" ? "light" : "dark";
     localStorage.setItem(THEME_KEY, next);
     applyTheme(next);
+    themeToggleBtn.setAttribute("aria-pressed", String(next === "dark"));
   });
 
   /* Tab disguise: Compass <-> Dashboard, matches window.applyBrandMode() in <head> */

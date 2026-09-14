@@ -77,7 +77,7 @@
       ...sorted.map(g => ({ id: g, label: g }))
     ];
     chipRow.innerHTML = chips.map(c =>
-      `<button class="chip ${c.id === activeGenre ? "active" : ""}" data-genre="${c.id}">${escapeHtml(c.label)}</button>`
+      `<button class="chip ${c.id === activeGenre ? "active" : ""}" role="tab" aria-selected="${c.id === activeGenre}" data-genre="${c.id}">${escapeHtml(c.label)}</button>`
     ).join("");
     genreCountEl.textContent = sorted.length;
   }
@@ -86,7 +86,11 @@
     const btn = e.target.closest(".chip");
     if (!btn) return;
     activeGenre = btn.dataset.genre;
-    [...chipRow.children].forEach(c => c.classList.toggle("active", c === btn));
+    [...chipRow.children].forEach(c => {
+      const isActive = c === btn;
+      c.classList.toggle("active", isActive);
+      c.setAttribute("aria-selected", String(isActive));
+    });
     render();
   });
 
@@ -122,6 +126,25 @@
   const closeBtn = document.getElementById("closePlayer");
   const fullscreenBtn = document.getElementById("fullscreenPlayer");
   let currentIframe = null;
+  let lastFocused = null;
+
+  function trapFocus(e){
+    if (e.key !== "Tab") return;
+    // The iframe is excluded on purpose: once it holds focus, its (often
+    // cross-origin) game content can't bubble Escape back to us to close.
+    const focusable = [...overlay.querySelectorAll('button, [href], [tabindex]:not([tabindex="-1"])')]
+      .filter(el => !el.disabled && el.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first){
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last){
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   function openPlayer(href, title){
     // A handful of games don't tolerate being nested two iframes deep
@@ -147,15 +170,21 @@
     });
     playerBody.appendChild(iframe);
     currentIframe = iframe;
+    lastFocused = document.activeElement;
     overlay.classList.add("open");
     document.body.style.overflow = "hidden";
+    closeBtn?.focus();
+    overlay.addEventListener("keydown", trapFocus);
     history.replaceState(null, "", "#" + href.split("/").pop().replace(".html",""));
   }
   function closePlayer(){
     overlay.classList.remove("open");
+    overlay.removeEventListener("keydown", trapFocus);
     document.body.style.overflow = "";
     setTimeout(() => { playerBody.innerHTML = ""; currentIframe = null; }, 300);
     history.replaceState(null, "", location.pathname);
+    if (lastFocused && document.contains(lastFocused)) lastFocused.focus();
+    lastFocused = null;
   }
   closeBtn?.addEventListener("click", closePlayer);
   overlay?.addEventListener("click", (e) => { if (e.target === overlay) closePlayer(); });
