@@ -1729,5 +1729,55 @@
       "arcade",
       "casual"
     ]
+  },
+  {
+    "id": "ovo",
+    "href": "iframes/ovo.html",
+    "img": "https://classroom8.github.io/ovo/icon-256.png",
+    "title": "OvO",
+    "genres": [
+      "platformer",
+      "arcade",
+      "skill"
+    ]
+  },
+  {
+    "id": "drifthunters",
+    "href": "iframes/drifthunters.html",
+    "img": "https://drifthuntersunblocked.github.io/images/icon_game.png",
+    "title": "Drift Hunters",
+    "genres": [
+      "racing",
+      "simulation"
+    ]
+  },
+  {
+    "id": "2048",
+    "href": "iframes/2048.html",
+    "img": "https://gabrielecirulli.github.io/2048/meta/og_image.png",
+    "title": "2048",
+    "genres": [
+      "puzzle"
+    ]
+  },
+  {
+    "id": "cookieclicker",
+    "href": "iframes/cookieclicker.html",
+    "img": "https://cookieclickerunblocked.github.io/style/favicon.ico",
+    "title": "Cookie Clicker",
+    "genres": [
+      "idle",
+      "simulation"
+    ]
+  },
+  {
+    "id": "snake",
+    "href": "iframes/snake.html",
+    "img": "resources/snake-icon.svg",
+    "title": "Snake",
+    "genres": [
+      "arcade",
+      "skill"
+    ]
   }
 ]
