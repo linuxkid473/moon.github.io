@@ -125,8 +125,11 @@
   const playerTitle = document.getElementById("playerTitle");
   const closeBtn = document.getElementById("closePlayer");
   const fullscreenBtn = document.getElementById("fullscreenPlayer");
+  const downloadBtn = document.getElementById("downloadPlayer");
   let currentIframe = null;
   let lastFocused = null;
+  let currentHref = null;
+  let currentTitle = null;
 
   function trapFocus(e){
     if (e.key !== "Tab") return;
@@ -159,6 +162,8 @@
       if (ok) window.open(href, "_blank", "noopener");
       return;
     }
+    currentHref = href;
+    currentTitle = title || "";
     playerTitle.textContent = title || "";
     playerBody.innerHTML = `<div class="player-loading"><div class="spinner"></div><span>Loading ${escapeHtml(title||"game")}…</span></div>`;
     const iframe = document.createElement("iframe");
@@ -194,6 +199,24 @@
   fullscreenBtn?.addEventListener("click", () => {
     const target = playerBody.querySelector("iframe") || playerBody;
     if (target.requestFullscreen) target.requestFullscreen();
+  });
+  downloadBtn?.addEventListener("click", async () => {
+    if (!currentHref) return;
+    try {
+      const res = await fetch(currentHref);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(currentTitle || "game").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "game"}.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast("Downloaded — open the file locally to play offline.");
+    } catch {
+      toast("Couldn't download this game.");
+    }
   });
 
   /* ---------------- Random game ---------------- */
