@@ -1643,5 +1643,15 @@
     "img": "resources/frickbears.webp",
     "title": "Frickbears3",
     "genres": []
+  },
+  {
+    "id": "rallyracerdirt",
+    "href": "iframes/rallyracerdirt.html",
+    "img": "https://trafficjam3d.github.io/rally-racer-dirt/logo.png",
+    "title": "Rally Racer Dirt",
+    "genres": [
+      "racing",
+      "arcade"
+    ]
   }
 ]
