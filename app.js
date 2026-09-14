@@ -129,7 +129,11 @@
     // work fine standalone — those get an external href in games.json
     // and open in a new tab instead of the in-page player.
     if (/^https?:\/\//.test(href)){
-      window.open(href, "_blank", "noopener");
+      const ok = window.confirm(
+        `${title || "This game"} opens in a new tab.\n\n` +
+        "Heads up: that new tab shows the game's real title and icon, not the Compass disguise — close it when you're done."
+      );
+      if (ok) window.open(href, "_blank", "noopener");
       return;
     }
     playerTitle.textContent = title || "";
