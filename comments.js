@@ -2,7 +2,7 @@
    side panel. mount(gameId) must be paired with unmount() before mounting a
    different gameId, so listeners never leak across games. */
 import { database } from "./firebase-init.js";
-import { getIdentity, recordComment } from "./identity.js";
+import { getIdentity, recordComment, isLoggedIn, onIdentityChange } from "./identity.js";
 import { censorText, isProfanityFilterOn } from "./profanity.js";
 import {
   ref, push, onChildAdded, onValue, runTransaction, serverTimestamp, limitToLast, query
@@ -28,8 +28,18 @@ function ensureEls(){
     likeBtn: document.getElementById("commentsLike"),
     likeIcon: document.getElementById("commentsLikeIcon"),
     likeCount: document.getElementById("commentsLikeCount"),
+    loginPrompt: document.getElementById("commentsLoginPrompt"),
+    loginBtn: document.getElementById("commentsLoginBtn"),
   };
+  els.loginBtn.addEventListener("click", () => document.getElementById("profileBtn")?.click());
   return els;
+}
+
+function renderAuthGate(){
+  const loggedIn = isLoggedIn();
+  els.form.hidden = !loggedIn;
+  els.likeBtn.disabled = !loggedIn;
+  els.loginPrompt.hidden = loggedIn;
 }
 
 function renderComment(comment){
@@ -76,6 +86,8 @@ export function mount(gameId){
   currentGameId = gameId;
   const e = ensureEls();
   e.list.innerHTML = "";
+  renderAuthGate();
+  unsubscribers.push(onIdentityChange(renderAuthGate));
 
   const itemsQuery = query(ref(database, `comments/${gameId}/items`), limitToLast(50));
   const offItems = onChildAdded(itemsQuery, snap => renderComment(snap.val() || {}));
@@ -98,7 +110,7 @@ export function mount(gameId){
   e.form.onsubmit = ev => {
     ev.preventDefault();
     const text = e.input.value.trim();
-    if (!text || !currentGameId) return;
+    if (!text || !currentGameId || !isLoggedIn()) return;
     const identity = getIdentity();
     push(ref(database, `comments/${currentGameId}/items`), {
       identityId: identity.id,
@@ -113,7 +125,7 @@ export function mount(gameId){
   };
 
   e.likeBtn.onclick = () => {
-    if (!currentGameId) return;
+    if (!currentGameId || !isLoggedIn()) return;
     const gid = currentGameId;
     // Capture the delta once, synchronously, before any async work starts —
     // a transaction's update function can be re-invoked on retry, and by

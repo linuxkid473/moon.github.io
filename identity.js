@@ -4,8 +4,9 @@
    or players/<id> directly, so there's exactly one source of truth. */
 import { database } from "./firebase-init.js";
 import {
-  ref, update, runTransaction
+  ref, get, update, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { onAuthChange } from "./auth.js";
 
 const IDENTITY_KEY = "moongames.identity";
 const STATS_KEY = "moongames.stats";
@@ -62,18 +63,25 @@ function migrateLegacyUsername(identity){
   return identity;
 }
 
-let identity = loadJSON(IDENTITY_KEY, null);
-if (!identity || typeof identity.id !== "string"){
-  identity = {
+function freshGuestIdentity(){
+  const guest = {
     id: randomId(),
     username: "",
     avatarEmoji: AVATAR_EMOJIS[Math.floor(Math.random() * AVATAR_EMOJIS.length)],
     avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    loggedIn: false
   };
-  migrateLegacyUsername(identity);
+  migrateLegacyUsername(guest);
+  return guest;
+}
+
+let identity = loadJSON(IDENTITY_KEY, null);
+if (!identity || typeof identity.id !== "string"){
+  identity = freshGuestIdentity();
   saveJSON(IDENTITY_KEY, identity);
 }
+if (typeof identity.loggedIn !== "boolean") identity.loggedIn = false;
 
 let stats = loadJSON(STATS_KEY, null);
 if (!stats || typeof stats !== "object"){
@@ -263,11 +271,86 @@ async function checkAchievements(){
 
 recordVisit();
 
+/* ---------------- Account (optional layer on top of the guest identity) ----------------
+   Signing in swaps the active id/username/avatar/numeric-stats over to the
+   account's server record (or seeds that record from this device's current
+   guest data, for a brand-new account) — every other module keeps calling
+   getIdentity()/getStats() exactly as before and just sees it change.
+   Per-game play cooldowns and unlocked achievements stay local/per-device
+   even for an account, since they were never written server-side. */
+let authResolved = false;
+const authListeners = new Set();
+function notifyAuthReady(){ authListeners.forEach(cb => { try { cb(identity.loggedIn); } catch {} }); }
+
+onAuthChange(async (user) => {
+  if (!user){
+    if (identity.loggedIn){
+      identity = freshGuestIdentity();
+      stats = defaultStats();
+      saveJSON(IDENTITY_KEY, identity);
+      saveJSON(STATS_KEY, stats);
+      notifyIdentity();
+      notifyStats();
+    }
+    authResolved = true;
+    notifyAuthReady();
+    return;
+  }
+
+  try {
+    const snap = await get(ref(database, "players/" + user.uid));
+    const server = snap.val();
+    if (server && server.stats){
+      identity = {
+        id: user.uid,
+        username: typeof server.username === "string" ? server.username : identity.username,
+        avatarEmoji: AVATAR_EMOJIS.includes(server.avatarEmoji) ? server.avatarEmoji : identity.avatarEmoji,
+        avatarColor: AVATAR_COLORS.includes(server.avatarColor) ? server.avatarColor : identity.avatarColor,
+        createdAt: identity.createdAt,
+        loggedIn: true
+      };
+      const s = server.stats;
+      stats = {
+        ...stats,
+        totalPlays: typeof s.totalPlays === "number" ? s.totalPlays : stats.totalPlays,
+        distinctGamesPlayedCount: typeof s.distinctGamesPlayedCount === "number" ? s.distinctGamesPlayedCount : stats.distinctGamesPlayedCount,
+        chatMessagesSent: typeof s.chatMessagesSent === "number" ? s.chatMessagesSent : stats.chatMessagesSent,
+        commentsPosted: typeof s.commentsPosted === "number" ? s.commentsPosted : stats.commentsPosted,
+        tictactoe: { ...stats.tictactoe, ...(s.tictactoe || {}) },
+        streak: { ...stats.streak, ...(s.streak || {}) },
+      };
+    } else {
+      identity = { ...identity, id: user.uid, loggedIn: true };
+    }
+    saveJSON(IDENTITY_KEY, identity);
+    notifyIdentity();
+    recordVisit(); // re-evaluates today's streak against the now-current (account) identity
+    // recordVisit() is a same-day no-op if the guest identity already logged
+    // today's visit moments ago — that would otherwise skip persistStats(),
+    // so explicitly (re)schedule a flush to make sure the account's record
+    // actually gets written under its new id.
+    scheduleFlush();
+  } catch {
+    // Network hiccup — stay on whatever local identity we already have.
+  } finally {
+    authResolved = true;
+    notifyAuthReady();
+  }
+});
+
+export function isLoggedIn(){ return !!identity.loggedIn; }
+export function onAuthReady(cb){
+  authListeners.add(cb);
+  if (authResolved) cb(identity.loggedIn);
+  return () => authListeners.delete(cb);
+}
+
 export const MoonIdentity = {
   getIdentity, setUsername, setAvatar, onIdentityChange,
   getStats, onStatsChange,
   recordGamePlay, recordChatMessage, recordComment, recordTicTacToeResult, recordVisit,
   getUnlockedAchievements, getAllAchievements,
+  isLoggedIn, onAuthReady,
   AVATAR_EMOJIS, AVATAR_COLORS
 };
 window.MoonIdentity = MoonIdentity;

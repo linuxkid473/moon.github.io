@@ -1812,7 +1812,8 @@
       "multiplayer",
       "puzzle"
     ],
-    "standalone": true
+    "standalone": true,
+    "exclusive": true
   },
   {
     "id": "sandboxcity",

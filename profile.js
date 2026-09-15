@@ -4,6 +4,7 @@ import {
   getIdentity, setUsername, setAvatar, onIdentityChange,
   getStats, onStatsChange, AVATAR_EMOJIS, AVATAR_COLORS
 } from "./identity.js";
+import { signUp, logIn, logOut } from "./auth.js";
 
 const btn = document.getElementById("profileBtn");
 if (btn){
@@ -25,6 +26,25 @@ if (btn){
       <div class="profile-color-row" id="profileColorRow"></div>
     </div>
     <div class="profile-section">
+      <div class="profile-label">Account</div>
+      <div id="profileAccountLoggedOut">
+        <div class="profile-auth-row">
+          <input type="text" id="profileAuthUsername" placeholder="Username" maxlength="20" autocomplete="username">
+          <input type="password" id="profileAuthPassword" placeholder="Password" autocomplete="current-password">
+        </div>
+        <div class="profile-auth-actions">
+          <button class="pill-btn primary" id="profileLoginBtn" type="button">Log in</button>
+          <button class="pill-btn" id="profileSignupBtn" type="button">Sign up</button>
+        </div>
+        <p class="profile-auth-msg" id="profileAuthMsg" hidden></p>
+        <p class="profile-auth-hint">Create an account to keep your name, avatar, and stats across devices &mdash; and to comment on games.</p>
+      </div>
+      <div id="profileAccountLoggedIn" hidden>
+        <p class="profile-auth-msg logged-in">You're logged in.</p>
+        <button class="pill-btn" id="profileLogoutBtn" type="button">Log out</button>
+      </div>
+    </div>
+    <div class="profile-section">
       <div class="profile-label">Your stats</div>
       <div class="profile-stats" id="profileStats"></div>
     </div>
@@ -40,6 +60,14 @@ if (btn){
     emojiGrid: document.getElementById("profileEmojiGrid"),
     colorRow: document.getElementById("profileColorRow"),
     stats: document.getElementById("profileStats"),
+    loggedOutBox: document.getElementById("profileAccountLoggedOut"),
+    loggedInBox: document.getElementById("profileAccountLoggedIn"),
+    authUsername: document.getElementById("profileAuthUsername"),
+    authPassword: document.getElementById("profileAuthPassword"),
+    loginBtn: document.getElementById("profileLoginBtn"),
+    signupBtn: document.getElementById("profileSignupBtn"),
+    authMsg: document.getElementById("profileAuthMsg"),
+    logoutBtn: document.getElementById("profileLogoutBtn"),
   };
 
   els.emojiGrid.innerHTML = AVATAR_EMOJIS.map(e =>
@@ -60,6 +88,10 @@ if (btn){
   function renderUsername(identity){
     if (document.activeElement !== els.username) els.username.value = identity.username;
   }
+  function renderAuthState(identity){
+    els.loggedOutBox.hidden = !!identity.loggedIn;
+    els.loggedInBox.hidden = !identity.loggedIn;
+  }
   function renderStats(stats){
     const rows = [
       ["Games played", stats.totalPlays],
@@ -76,9 +108,38 @@ if (btn){
 
   renderAvatar(getIdentity());
   renderUsername(getIdentity());
+  renderAuthState(getIdentity());
   renderStats(getStats());
-  onIdentityChange(identity => { renderAvatar(identity); renderUsername(identity); });
+  onIdentityChange(identity => { renderAvatar(identity); renderUsername(identity); renderAuthState(identity); });
   onStatsChange(renderStats);
+
+  function setAuthMsg(text, isError){
+    els.authMsg.textContent = text;
+    els.authMsg.hidden = !text;
+    els.authMsg.classList.toggle("error", !!isError);
+  }
+  function setAuthBusy(busy){
+    els.loginBtn.disabled = busy;
+    els.signupBtn.disabled = busy;
+  }
+  async function handleAuth(action){
+    const username = els.authUsername.value.trim();
+    const password = els.authPassword.value;
+    setAuthMsg("");
+    setAuthBusy(true);
+    try {
+      await action(username, password);
+      els.authPassword.value = "";
+      setAuthMsg("");
+    } catch (err) {
+      setAuthMsg(err.message || "Something went wrong.", true);
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+  els.loginBtn.addEventListener("click", () => handleAuth(logIn));
+  els.signupBtn.addEventListener("click", () => handleAuth(signUp));
+  els.logoutBtn.addEventListener("click", () => logOut());
 
   els.username.addEventListener("change", () => setUsername(els.username.value));
   els.emojiGrid.addEventListener("click", e => {

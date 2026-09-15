@@ -613,6 +613,16 @@ button{ font: inherit; color: inherit; }
   outline: none;
 }
 .comments-form .pill-btn{ align-self: flex-end; padding: 7px 16px; font-size: 13px; }
+.like-btn:disabled{ opacity: .5; cursor: default; }
+
+.comments-login-prompt{
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: var(--s-4);
+  border-top: 1px solid var(--border);
+  text-align: center; flex: none;
+}
+.comments-login-prompt p{ margin: 0; font-size: 13px; color: var(--text-secondary); }
+.comments-login-prompt .pill-btn{ padding: 7px 20px; font-size: 13px; }
 
 @media (max-width: 860px){
   .player-main{ position: relative; }
@@ -1043,6 +1053,25 @@ button{ font: inherit; color: inherit; }
 .profile-stat-row span{ color: var(--text-secondary); }
 
 .profile-achievements-link{ display: flex; justify-content: center; width: 100%; }
+
+.profile-auth-row{ display: flex; gap: 6px; margin-bottom: 8px; }
+.profile-auth-row input{
+  flex: 1; min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+.profile-auth-row input:focus{ box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 16%, transparent); }
+.profile-auth-actions{ display: flex; gap: 8px; margin-bottom: 8px; }
+.profile-auth-actions .pill-btn{ flex: 1; padding: 7px 10px; font-size: 12.5px; }
+.profile-auth-msg{ font-size: 12px; color: var(--text-secondary); margin: 0 0 6px; }
+.profile-auth-msg.error{ color: var(--danger); }
+.profile-auth-msg.logged-in{ color: #34c759; font-weight: 600; }
+.profile-auth-hint{ font-size: 11.5px; color: var(--text-tertiary); margin: 0; line-height: 1.4; }
 
 /* ---------------- Chat online list ---------------- */
 .chat-online{ border-bottom: 1px solid var(--border); flex: none; }
