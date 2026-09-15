@@ -1634,6 +1634,17 @@
     ]
   },
   {
+    "id": "angustaylor",
+    "href": "iframes/angustaylor.html",
+    "img": "resources/angustaylor-icon.svg",
+    "title": "Angus Taylor: Fighting Taxes",
+    "genres": [
+      "arcade",
+      "casual"
+    ],
+    "exclusive": true
+  },
+  {
     "id": "lobotomy",
     "href": "iframes/lobotomy.html",
     "img": "resources/lobotomy.webp",

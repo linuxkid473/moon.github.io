@@ -1,0 +1,319 @@
+<html>
+  <link id="dynamic-favicon" rel="icon" type="image/png" href="resources/download.png">
+      <title class="p1">Home | Compass</title>
+
+     <script>
+function applyBrandMode() {
+    const mode = localStorage.getItem("brandMode") || "normal";
+    const favicon = document.getElementById("dynamic-favicon");
+
+    if (mode === "alt") {
+        document.title = "Dashboard";
+        favicon.href = "resources/canvas.png?v=1";
+    } else {
+        document.title = "Home | Compass";
+        favicon.href = "resources/download.png?v=1";
+    }
+}
+
+applyBrandMode();
+</script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: linear-gradient(#0a1a3c, #142e63);
+      overflow: hidden;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+    #wrap {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      background: #1c3a75;
+      border: 4px solid #c8102e;
+      border-radius: 12px;
+      box-shadow: 0 0 30px rgba(0,0,0,0.5);
+      max-width: 96vw;
+      max-height: 96vh;
+    }
+    #hud {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 20px;
+      font-weight: 700;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+      pointer-events: none;
+      text-align: center;
+    }
+    #hint {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #cfd8ea;
+      font-size: 13px;
+      pointer-events: none;
+    }
+  </style>
+
+  <div id="wrap">
+    <div id="hud">Angus Taylor: Fighting Taxes</div>
+    <canvas id="game" width="800" height="450"></canvas>
+    <div id="hint">Space / Up / Tap to jump &nbsp;•&nbsp; Dodge the Tax Hikes &nbsp;•&nbsp; Grab the Tax Cuts</div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const GROUND_Y = 360;
+
+    let state = 'ready'; // ready | playing | over
+    let score = 0;
+    let best = Number(localStorage.getItem('angusTaylorBest') || 0);
+    let speed = 5.2;
+    let frame = 0;
+
+    const player = {
+      x: 90,
+      y: GROUND_Y,
+      w: 46,
+      h: 64,
+      vy: 0,
+      jumping: false
+    };
+
+    const GRAVITY = 0.9;
+    const JUMP_V = -15.5;
+
+    let obstacles = [];
+    let coins = [];
+
+    function reset() {
+      score = 0;
+      speed = 5.2;
+      frame = 0;
+      obstacles = [];
+      coins = [];
+      player.y = GROUND_Y;
+      player.vy = 0;
+      player.jumping = false;
+      state = 'playing';
+    }
+
+    function jump() {
+      if (state === 'ready') { reset(); return; }
+      if (state === 'over') { reset(); return; }
+      if (!player.jumping) {
+        player.vy = JUMP_V;
+        player.jumping = true;
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        jump();
+      }
+    });
+    canvas.addEventListener('pointerdown', jump);
+
+    function spawnObstacle() {
+      obstacles.push({
+        x: canvas.width + 20,
+        y: GROUND_Y + 4,
+        w: 34,
+        h: 46,
+        label: 'TAX'
+      });
+    }
+
+    function spawnCoin() {
+      coins.push({
+        x: canvas.width + 20,
+        y: GROUND_Y - 90 - Math.random() * 60,
+        r: 14
+      });
+    }
+
+    function drawGround() {
+      ctx.fillStyle = '#12275a';
+      ctx.fillRect(0, GROUND_Y + player.h, canvas.width, canvas.height - (GROUND_Y + player.h));
+      ctx.fillStyle = '#c8102e';
+      ctx.fillRect(0, GROUND_Y + player.h, canvas.width, 4);
+    }
+
+    function drawPlayer() {
+      const x = player.x, y = player.y;
+      ctx.save();
+      ctx.translate(x, y);
+
+      // legs
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(6, 40, 12, 24);
+      ctx.fillRect(28, 40, 12, 24);
+
+      // suit body
+      ctx.fillStyle = '#1c3a75';
+      ctx.fillRect(4, 8, 38, 36);
+
+      // tie
+      ctx.fillStyle = '#c8102e';
+      ctx.beginPath();
+      ctx.moveTo(23, 10);
+      ctx.lineTo(19, 30);
+      ctx.lineTo(23, 42);
+      ctx.lineTo(27, 30);
+      ctx.closePath();
+      ctx.fill();
+
+      // head
+      ctx.fillStyle = '#f0c8a0';
+      ctx.beginPath();
+      ctx.arc(23, -2, 16, 0, Math.PI * 2);
+      ctx.fill();
+
+      // hair
+      ctx.fillStyle = '#5b4636';
+      ctx.beginPath();
+      ctx.arc(23, -8, 16, Math.PI, 0);
+      ctx.fill();
+
+      // glasses
+      ctx.strokeStyle = '#1a1a2e';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(10, -4, 12, 8);
+      ctx.strokeRect(24, -4, 12, 8);
+      ctx.beginPath();
+      ctx.moveTo(22, 0);
+      ctx.lineTo(24, 0);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawObstacle(o) {
+      ctx.fillStyle = '#d9455f';
+      ctx.fillRect(o.x, o.y - o.h, o.w, o.h);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.fillText(o.label, o.x + o.w / 2, o.y - o.h / 2 + 4);
+    }
+
+    function drawCoin(c) {
+      ctx.fillStyle = '#ffd23f';
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#8a6a00';
+      ctx.font = 'bold 14px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.fillText('$', c.x, c.y + 5);
+    }
+
+    function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+      return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+    }
+
+    function update() {
+      frame++;
+
+      if (state === 'playing') {
+        player.vy += GRAVITY;
+        player.y += player.vy;
+        if (player.y > GROUND_Y) {
+          player.y = GROUND_Y;
+          player.vy = 0;
+          player.jumping = false;
+        }
+
+        if (frame % Math.max(35, 70 - Math.floor(speed * 4)) === 0) spawnObstacle();
+        if (frame % 90 === 0) spawnCoin();
+
+        obstacles.forEach(o => o.x -= speed);
+        coins.forEach(c => c.x -= speed);
+        obstacles = obstacles.filter(o => o.x + o.w > -10);
+        coins = coins.filter(c => c.x + c.r > -10);
+
+        const px = player.x, py = player.y - player.h, pw = player.w, ph = player.h;
+        for (const o of obstacles) {
+          if (rectsOverlap(px, py, pw, ph, o.x, o.y - o.h, o.w, o.h)) {
+            state = 'over';
+            best = Math.max(best, Math.floor(score));
+            localStorage.setItem('angusTaylorBest', best);
+          }
+        }
+        coins = coins.filter(c => {
+          const hit = rectsOverlap(px, py, pw, ph, c.x - c.r, c.y - c.r, c.r * 2, c.r * 2);
+          if (hit) score += 25;
+          return !hit;
+        });
+
+        score += 0.12;
+        speed += 0.0025;
+      }
+    }
+
+    function drawBackground() {
+      ctx.fillStyle = '#1c3a75';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      for (let i = 0; i < 5; i++) {
+        const bx = ((i * 220) - (frame * 1.2) % 1100 + canvas.width) % (canvas.width + 220) - 110;
+        ctx.fillRect(bx, 40 + (i % 3) * 30, 90, 140);
+      }
+    }
+
+    function draw() {
+      drawBackground();
+      drawGround();
+      obstacles.forEach(drawObstacle);
+      coins.forEach(drawCoin);
+      drawPlayer();
+
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 18px Segoe UI';
+      ctx.fillText('Score: ' + Math.floor(score), 16, 28);
+      ctx.textAlign = 'right';
+      ctx.fillText('Best: ' + best, canvas.width - 16, 28);
+
+      if (state === 'ready') {
+        overlay('Angus Taylor: Fighting Taxes', 'Press Space or tap to start dodging tax hikes');
+      } else if (state === 'over') {
+        overlay('Audited! Score: ' + Math.floor(score), 'Press Space or tap to try again');
+      }
+    }
+
+    function overlay(title, sub) {
+      ctx.fillStyle = 'rgba(10, 20, 50, 0.65)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 30px Segoe UI';
+      ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 10);
+      ctx.font = '16px Segoe UI';
+      ctx.fillStyle = '#cfd8ea';
+      ctx.fillText(sub, canvas.width / 2, canvas.height / 2 + 22);
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
+</html>
