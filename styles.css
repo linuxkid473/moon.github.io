@@ -254,6 +254,15 @@ button{ font: inherit; color: inherit; }
   :root:not([data-theme="dark"]) .theme-icon .sun{ opacity: 1; transform: rotate(0) scale(1); }
 }
 
+/* While actively searching, collapse everything down to just the results
+   grid — the hero, daily pick, and exclusives row are all browse-mode
+   content that only add noise once someone's typed a query. */
+body.search-active .hero,
+body.search-active .featured-section,
+body.search-active .exclusives-section{
+  display: none;
+}
+
 /* ---------------- Hero ---------------- */
 .hero{
   padding: var(--s-9) var(--s-6) var(--s-6);

@@ -130,12 +130,14 @@ import { pickFeaturedGame, getFeaturedStats } from "./featured.js";
   searchInput?.addEventListener("input", () => {
     query = searchInput.value.trim().toLowerCase();
     searchWrap.classList.toggle("has-value", !!searchInput.value);
+    document.body.classList.toggle("search-active", !!query);
     render();
   });
   clearBtn?.addEventListener("click", () => {
     searchInput.value = "";
     query = "";
     searchWrap.classList.remove("has-value");
+    document.body.classList.remove("search-active");
     searchInput.focus();
     render();
   });
