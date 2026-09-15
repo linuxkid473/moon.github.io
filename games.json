@@ -1650,7 +1650,7 @@
   {
     "id": "rallyracerdirt",
     "href": "iframes/rallyracerdirt.html",
-    "img": "https://trafficjam3d.github.io/rally-racer-dirt/logo.png",
+    "img": "https://rallyracerdirt.github.io/game-RallyRacerDirt/rally-racer-dirt/logo.png",
     "title": "Rally Racer Dirt",
     "genres": [
       "racing",
@@ -1718,7 +1718,7 @@
   {
     "id": "hazmobfps",
     "href": "iframes/hazmobfps.html",
-    "img": "https://hazmobfps.io/og-image.png",
+    "img": "https://www.google.com/s2/favicons?domain=hazmobfps.io&sz=256",
     "title": "Hazmob FPS: Online Strike",
     "genres": [
       "action",
@@ -1741,7 +1741,7 @@
   {
     "id": "ovo",
     "href": "iframes/ovo.html",
-    "img": "https://classroom8.github.io/ovo/icon-256.png",
+    "img": "https://classroom8.github.io/ovo/favicon.ico",
     "title": "OvO",
     "genres": [
       "platformer",
@@ -1790,8 +1790,7 @@
     "genres": [
       "arcade",
       "skill"
-    ],
-    "exclusive": true
+    ]
   },
   {
     "id": "sandboxcity",
