@@ -1814,16 +1814,5 @@
     ],
     "standalone": true,
     "exclusive": true
-  },
-  {
-    "id": "sandboxcity",
-    "href": "iframes/sandboxcity.html",
-    "img": "https://imgs.crazygames.com/sandbox-city---cars-zombies-ragdolls_16x9/20250909075759/sandbox-city---cars-zombies-ragdolls_16x9-cover?metadata=none&quality=100&width=1200&height=630&fit=crop",
-    "title": "Sandbox City",
-    "genres": [
-      "action",
-      "sandbox",
-      "simulation"
-    ]
   }
 ]
