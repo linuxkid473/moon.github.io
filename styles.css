@@ -304,6 +304,29 @@ button{ font: inherit; color: inherit; }
 .hero-stats strong{ display: block; font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
 .hero-stats span{ font-size: 13px; color: var(--text-tertiary); }
 
+/* ---------------- Featured today ---------------- */
+.featured-section{ padding-top: var(--s-2); }
+.featured-head{ display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; padding-bottom: var(--s-2); }
+.featured-head h2{
+  font-size: 20px; font-weight: 700; letter-spacing: -.01em;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.featured-head p{ font-size: 13px; color: var(--text-tertiary); }
+.featured-card{ padding-bottom: var(--s-2); }
+.featured-card .card{
+  box-shadow: 0 0 0 1px var(--accent) inset;
+  animation: none;
+}
+@media (min-width: 600px){
+  .featured-card .card{ display: flex; align-items: center; gap: var(--s-5); }
+  .featured-card .card-thumb{ width: 220px; aspect-ratio: 1/1; flex: none; }
+  .featured-card .card-body{ flex: 1; padding: var(--s-4) var(--s-5) var(--s-4) 0; }
+  .featured-card .card-title{ font-size: 20px; white-space: normal; }
+  .featured-card .card-genre{ font-size: 14px; }
+}
+.featured-stats{ font-size: 13px; color: var(--text-tertiary); margin-top: 4px; }
+
 /* ---------------- Exclusives ---------------- */
 .exclusives-section{ padding-top: var(--s-2); }
 .exclusives-head{
@@ -516,6 +539,13 @@ button{ font: inherit; color: inherit; }
   flex-wrap: wrap;
 }
 .player-title{ font-weight: 700; font-size: 16px; margin-right: auto; }
+#commentsToggle[aria-pressed="true"]{ color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.player-main{
+  flex: 1;
+  display: flex;
+  gap: var(--s-3);
+  min-height: 0;
+}
 .player-body{
   flex: 1;
   border-radius: var(--radius-l);
@@ -523,6 +553,77 @@ button{ font: inherit; color: inherit; }
   background: #000;
   box-shadow: 0 30px 80px hsl(var(--shadow-color) / .35);
   position: relative;
+  min-width: 0;
+}
+
+/* ---------------- Player comments panel ---------------- */
+.player-comments{
+  width: 320px;
+  max-width: 40vw;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  overflow: hidden;
+}
+.comments-head{
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.like-btn{
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 13px; font-weight: 700;
+  cursor: pointer;
+  transition: transform .15s var(--ease-spring);
+}
+.like-btn:active{ transform: scale(.94); }
+.comments-list{
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-3) var(--s-4);
+  display: flex; flex-direction: column; gap: var(--s-3);
+}
+.comment-row{ display: flex; gap: 8px; }
+.comment-col{ display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.comment-meta{ display: flex; gap: 6px; align-items: baseline; font-size: 11px; }
+.comment-name{ font-weight: 700; color: var(--text-secondary); }
+.comment-time{ color: var(--text-tertiary); }
+.comment-text{ font-size: 13.5px; line-height: 1.4; word-break: break-word; white-space: pre-wrap; }
+.comments-form{
+  display: flex; flex-direction: column; gap: 8px;
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+.comments-form textarea{
+  resize: none; min-height: 44px; max-height: 90px;
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit; font-size: 13px;
+  outline: none;
+}
+.comments-form .pill-btn{ align-self: flex-end; padding: 7px 16px; font-size: 13px; }
+
+@media (max-width: 860px){
+  .player-main{ position: relative; }
+  .player-comments{
+    position: absolute; inset: auto 0 0 0;
+    width: auto; max-width: none;
+    height: 60%;
+    border-radius: var(--radius-l) var(--radius-l) 0 0;
+    box-shadow: 0 -20px 50px hsl(var(--shadow-color) / .35);
+    z-index: 5;
+  }
 }
 .player-body iframe{
   width: 100%; height: 100%; border: none; display: block;
@@ -867,6 +968,96 @@ button{ font: inherit; color: inherit; }
   grid-column: 1/-1; text-align: center; font-size: 12px; color: var(--text-tertiary); padding: 30px 0;
 }
 .chat-gif-credit{ font-size: 10px; color: var(--text-tertiary); text-align: right; padding: 4px 10px; }
+
+/* ---------------- Profile ---------------- */
+.profile-avatar{
+  width: 26px; height: 26px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; line-height: 1; flex: none;
+  background: var(--surface-2);
+}
+.profile-avatar.lg{ width: 44px; height: 44px; font-size: 22px; }
+
+.profile-popover{
+  position: fixed;
+  z-index: 150;
+  width: 300px;
+  max-width: calc(100vw - 2 * var(--s-4));
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  box-shadow: 0 30px 80px hsl(var(--shadow-color) / .35);
+  padding: var(--s-4);
+  transform: scale(.95) translateY(-6px);
+  transform-origin: top right;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform .2s var(--ease-spring), opacity .15s var(--ease);
+  max-height: min(560px, calc(100vh - 100px));
+  overflow-y: auto;
+}
+.profile-popover.open{ transform: scale(1) translateY(0); opacity: 1; pointer-events: auto; }
+
+.profile-head{ display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-4); }
+.profile-head input{
+  flex: 1; min-width: 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 14px; font-weight: 600;
+  outline: none;
+}
+.profile-head input:focus{ box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-2) 16%, transparent); }
+
+.profile-section{ margin-bottom: var(--s-4); }
+.profile-label{ font-size: 12px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .04em; margin-bottom: var(--s-2); }
+
+.profile-emoji-grid{ display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-bottom: var(--s-3); }
+.profile-emoji-btn{
+  width: 100%; aspect-ratio: 1; border-radius: 10px;
+  border: 1px solid transparent; background: var(--surface-2);
+  font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: transform .12s var(--ease), border-color .12s var(--ease);
+}
+.profile-emoji-btn:hover{ transform: scale(1.08); }
+.profile-emoji-btn.active{ border-color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
+
+.profile-color-row{ display: flex; gap: 8px; flex-wrap: wrap; }
+.profile-color-btn{
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer;
+  transition: transform .12s var(--ease), border-color .12s var(--ease);
+}
+.profile-color-btn:hover{ transform: scale(1.12); }
+.profile-color-btn.active{ border-color: var(--text-primary); }
+
+.profile-stats{ display: flex; flex-direction: column; gap: 2px; }
+.profile-stat-row{
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.profile-stat-row:last-child{ border-bottom: none; }
+.profile-stat-row span{ color: var(--text-secondary); }
+
+.profile-achievements-link{ display: flex; justify-content: center; width: 100%; }
+
+/* ---------------- Chat online list ---------------- */
+.chat-online{ border-bottom: 1px solid var(--border); flex: none; }
+.chat-online-toggle{
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: var(--s-2) var(--s-4); background: none; border: none; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+}
+.chat-online-list{
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 0 var(--s-4) var(--s-3);
+  max-height: 140px; overflow-y: auto;
+}
+.chat-online-row{ display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.chat-online-row .profile-avatar{ width: 20px; height: 20px; font-size: 11px; }
 
 /* utility */
 .sr-only{

@@ -1,3 +1,7 @@
+import { recordGamePlay } from "./identity.js";
+import * as Comments from "./comments.js";
+import { pickFeaturedGame, getFeaturedStats } from "./featured.js";
+
 (() => {
   "use strict";
 
@@ -34,7 +38,7 @@
     return `
     <article class="card" tabindex="0" role="button"
       aria-label="Play ${escapeHtml(game.title)}${isExternal ? " (opens in a new tab)" : ""}"
-      data-id="${game.id}" data-href="${game.href}" data-title="${escapeHtml(game.title)}">
+      data-id="${game.id}" data-href="${game.href}" data-title="${escapeHtml(game.title)}" data-standalone="${!!game.standalone}">
       <div class="card-thumb skeleton">
         <img loading="lazy" src="${game.img}" alt="" onerror="this.closest('.card-thumb').classList.add('skeleton'); this.style.display='none';"
              onload="this.classList.add('loaded'); this.closest('.card-thumb').classList.remove('skeleton');">
@@ -80,6 +84,23 @@
     exclusivesSection.hidden = false;
   }
 
+  async function renderFeatured(){
+    const featuredSection = document.getElementById("featuredSection");
+    const featuredCard = document.getElementById("featuredCard");
+    if (!featuredSection || !featuredCard) return;
+    const game = pickFeaturedGame(ALL_GAMES.filter(g => !g.standalone));
+    if (!game){ featuredSection.hidden = true; return; }
+    featuredCard.innerHTML = cardTemplate(game);
+    featuredSection.hidden = false;
+    featuredCard.addEventListener("click", handleCardClick);
+    featuredCard.addEventListener("keydown", handleCardKeydown);
+    const stats = await getFeaturedStats(game.id);
+    const badge = document.createElement("div");
+    badge.className = "featured-stats";
+    badge.textContent = `🔥 ${stats.today} play${stats.today === 1 ? "" : "s"} today · ${stats.week} this week`;
+    featuredCard.querySelector(".card-body")?.appendChild(badge);
+  }
+
   function buildChips(genres){
     const counts = {};
     ALL_GAMES.forEach(g => g.genres.forEach(gr => counts[gr] = (counts[gr]||0)+1));
@@ -121,14 +142,17 @@
 
   function handleCardClick(e){
     const card = e.target.closest(".card");
-    if (card) openPlayer(card.dataset.href, card.dataset.title);
+    if (!card) return;
+    if (card.dataset.standalone === "true"){ location.href = card.dataset.href; return; }
+    openPlayer(card.dataset.href, card.dataset.title, card.dataset.id);
   }
   function handleCardKeydown(e){
     if (e.key !== "Enter" && e.key !== " ") return;
     const card = e.target.closest(".card");
     if (!card) return;
     e.preventDefault();
-    openPlayer(card.dataset.href, card.dataset.title);
+    if (card.dataset.standalone === "true"){ location.href = card.dataset.href; return; }
+    openPlayer(card.dataset.href, card.dataset.title, card.dataset.id);
   }
   grid?.addEventListener("click", handleCardClick);
   grid?.addEventListener("keydown", handleCardKeydown);
@@ -142,6 +166,8 @@
   const closeBtn = document.getElementById("closePlayer");
   const fullscreenBtn = document.getElementById("fullscreenPlayer");
   const downloadBtn = document.getElementById("downloadPlayer");
+  const commentsToggle = document.getElementById("commentsToggle");
+  const playerComments = document.getElementById("playerComments");
   let currentIframe = null;
   let lastFocused = null;
   let currentHref = null;
@@ -165,7 +191,7 @@
     }
   }
 
-  function openPlayer(href, title){
+  function openPlayer(href, title, gameId){
     // A handful of games don't tolerate being nested two iframes deep
     // (our modal -> their wrapper -> the actual game) even though they
     // work fine standalone — those get an external href in games.json
@@ -196,7 +222,15 @@
     document.body.style.overflow = "hidden";
     closeBtn?.focus();
     overlay.addEventListener("keydown", trapFocus);
-    history.replaceState(null, "", "#" + href.split("/").pop().replace(".html",""));
+    history.replaceState(null, "", "#" + (gameId || href.split("/").pop().replace(".html","")));
+
+    if (gameId){
+      recordGamePlay(gameId);
+      Comments.mount(gameId);
+      if (commentsToggle) commentsToggle.hidden = false;
+    } else if (commentsToggle){
+      commentsToggle.hidden = true;
+    }
   }
   function closePlayer(){
     overlay.classList.remove("open");
@@ -206,7 +240,16 @@
     history.replaceState(null, "", location.pathname);
     if (lastFocused && document.contains(lastFocused)) lastFocused.focus();
     lastFocused = null;
+    Comments.unmount();
+    if (playerComments){ playerComments.hidden = true; }
+    if (commentsToggle) commentsToggle.setAttribute("aria-pressed", "false");
   }
+  commentsToggle?.addEventListener("click", () => {
+    if (!playerComments) return;
+    const open = playerComments.hidden;
+    playerComments.hidden = !open;
+    commentsToggle.setAttribute("aria-pressed", String(open));
+  });
   closeBtn?.addEventListener("click", closePlayer);
   overlay?.addEventListener("click", (e) => { if (e.target === overlay) closePlayer(); });
   document.addEventListener("keydown", (e) => {
@@ -251,7 +294,8 @@
   document.getElementById("randomBtn")?.addEventListener("click", () => {
     if (!ALL_GAMES.length) return;
     const g = ALL_GAMES[Math.floor(Math.random() * ALL_GAMES.length)];
-    openPlayer(g.href, g.title);
+    if (g.standalone){ location.href = g.href; return; }
+    openPlayer(g.href, g.title, g.id);
   });
 
   /* ---------------- Load data ---------------- */
@@ -260,13 +304,14 @@
     .then(data => {
       ALL_GAMES = data;
       gameCountEl.textContent = ALL_GAMES.length;
+      renderFeatured();
       renderExclusives();
       buildChips();
       render();
       const hash = location.hash.replace("#", "");
       if (hash){
         const g = ALL_GAMES.find(g => g.id === hash);
-        if (g) openPlayer(g.href, g.title);
+        if (g && !g.standalone) openPlayer(g.href, g.title, g.id);
       }
     })
     .catch(() => {

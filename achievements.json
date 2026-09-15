@@ -1,0 +1,13 @@
+[
+  { "id": "first-game", "title": "First Steps", "description": "Played your first game", "icon": "🎮", "trigger": { "stat": "totalPlays", "op": "gte", "value": 1 } },
+  { "id": "explorer-10", "title": "Explorer", "description": "Played 10 different games", "icon": "🗺️", "trigger": { "stat": "distinctGamesPlayedCount", "op": "gte", "value": 10 } },
+  { "id": "explorer-25", "title": "Cartographer", "description": "Played 25 different games", "icon": "🧭", "trigger": { "stat": "distinctGamesPlayedCount", "op": "gte", "value": 25 } },
+  { "id": "streak-3", "title": "Getting Warmed Up", "description": "3-day visit streak", "icon": "🔥", "trigger": { "stat": "streak.current", "op": "gte", "value": 3 } },
+  { "id": "streak-7", "title": "Week Warrior", "description": "7-day visit streak", "icon": "🔥", "trigger": { "stat": "streak.current", "op": "gte", "value": 7 } },
+  { "id": "chat-10", "title": "Chatterbox", "description": "Sent 10 chat messages", "icon": "💬", "trigger": { "stat": "chatMessagesSent", "op": "gte", "value": 10 } },
+  { "id": "chat-50", "title": "Social Butterfly", "description": "Sent 50 chat messages", "icon": "🦋", "trigger": { "stat": "chatMessagesSent", "op": "gte", "value": 50 } },
+  { "id": "comment-5", "title": "Critic", "description": "Left 5 comments", "icon": "📝", "trigger": { "stat": "commentsPosted", "op": "gte", "value": 5 } },
+  { "id": "ttt-win-1", "title": "Tic-Tac-Toe Rookie", "description": "Won a Tic-Tac-Toe match", "icon": "⭕", "trigger": { "stat": "tictactoe.wins", "op": "gte", "value": 1 } },
+  { "id": "ttt-win-5", "title": "Tic-Tac-Toe Champion", "description": "Won 5 Tic-Tac-Toe matches", "icon": "🏆", "trigger": { "stat": "tictactoe.wins", "op": "gte", "value": 5 } },
+  { "id": "ttt-win-10", "title": "Unbeatable", "description": "Won 10 Tic-Tac-Toe matches", "icon": "👑", "trigger": { "stat": "tictactoe.wins", "op": "gte", "value": 10 } }
+]

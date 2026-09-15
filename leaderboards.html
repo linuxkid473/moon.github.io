@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Document1 - Word">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" href="resources/word.png">
-<meta name="description" content="Contact Moon Games.">
+<meta name="description" content="Moon Games leaderboards — trending games, top players, and achievements.">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#5e5ce6">
 <link rel="stylesheet" href="styles.css">
@@ -31,15 +31,26 @@ applyBrandMode();
   .page-hero{ padding: var(--s-9) 0 var(--s-6); }
   .page-hero h1{ font-size: clamp(30px,5vw,44px); letter-spacing:-.02em; margin:0 0 var(--s-3); }
   .page-hero p{ color: var(--text-secondary); font-size: 17px; max-width: 620px; }
-  .contact-grid{ display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: var(--s-4); padding-bottom: var(--s-9); }
-  .contact-card{
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius-l); padding: var(--s-6);
-    transition: transform .2s var(--ease), box-shadow .2s var(--ease);
-  }
-  .contact-card:hover{ transform: translateY(-4px); box-shadow: 0 16px 32px hsl(var(--shadow-color) / .14); }
-  .contact-card h3{ margin: 0 0 var(--s-2); font-size: 16px; }
-  .contact-card p{ color: var(--text-secondary); font-size: 14px; margin: 0 0 var(--s-4); }
+
+  .lb-grid{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap: var(--s-5); padding-bottom: var(--s-7); }
+  .lb-card{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-l); padding: var(--s-5); }
+  .lb-card h2{ font-size: 15px; margin: 0 0 var(--s-4); display: flex; align-items: center; gap: 8px; }
+  .lb-list{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+  .lb-row{ display: flex; align-items: center; gap: var(--s-3); font-size: 13.5px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .lb-row:last-child{ border-bottom: none; }
+  .lb-rank{ width: 20px; flex: none; color: var(--text-tertiary); font-weight: 700; font-size: 12px; }
+  .lb-thumb{ width: 30px; height: 30px; border-radius: 8px; object-fit: cover; flex: none; background: var(--surface-2); }
+  .lb-name{ flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .lb-value{ color: var(--text-tertiary); font-size: 12px; flex: none; }
+  .lb-empty{ color: var(--text-tertiary); font-size: 13px; padding: var(--s-3) 0; }
+
+  #achievements{ padding-bottom: var(--s-9); }
+  .ach-grid{ display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: var(--s-3); }
+  .ach-card{ display: flex; gap: var(--s-3); align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-m); padding: var(--s-4); opacity: .4; }
+  .ach-card.unlocked{ opacity: 1; box-shadow: 0 0 0 1px var(--accent) inset; }
+  .ach-icon{ font-size: 24px; flex: none; }
+  .ach-title{ font-weight: 700; font-size: 14px; }
+  .ach-desc{ font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -52,9 +63,6 @@ applyBrandMode();
       Moon Games
     </a>
     <div class="nav-actions" style="margin-left:auto">
-      <a class="icon-btn" id="leaderboardBtn" href="leaderboards.html" aria-label="Leaderboards" title="Leaderboards">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4a1 1 0 0 0-1 1c0 2.5 1.5 4 4 4.3M17 6h3a1 1 0 0 1 1 1c0 2.5-1.5 4-4 4.3"/></svg>
-      </a>
       <button class="icon-btn" id="profileBtn" aria-label="Your profile" title="Your profile"></button>
       <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode" title="Toggle appearance">
         <span class="theme-icon">
@@ -70,26 +78,39 @@ applyBrandMode();
 <main id="main">
   <div class="container">
     <section class="page-hero">
-      <h1>Get in touch</h1>
-      <p>Found a broken game, want to suggest one, or have a general question? Pick a channel below.</p>
+      <h1>Leaderboards</h1>
+      <p>Trending games, top players, and streaks &mdash; all built from what people actually do on Moon Games.</p>
     </section>
 
-    <section class="contact-grid">
-      <div class="contact-card">
-        <h3>Discord</h3>
-        <p>Fastest way to report a broken game or chat with other players.</p>
-        <a class="pill-btn primary" href="https://discord.gg/f9psmrwc7H" target="_blank" rel="noopener">Join server</a>
+    <section class="lb-grid" id="lbGrid" aria-live="polite">
+      <div class="lb-card">
+        <h2>🔥 Trending this week</h2>
+        <ol class="lb-list" id="lbTrending"><li class="lb-empty">Loading&hellip;</li></ol>
       </div>
-      <div class="contact-card">
-        <h3>Suggest a game</h3>
-        <p>Send a link and we'll consider adding it to the library.</p>
-        <a class="pill-btn" href="https://forms.gle/P64SEtvX46VTjWbt9" target="_blank" rel="noopener">Open form</a>
+      <div class="lb-card">
+        <h2>📈 All-time most played</h2>
+        <ol class="lb-list" id="lbMostPlayed"><li class="lb-empty">Loading&hellip;</li></ol>
       </div>
-      <div class="contact-card">
-        <h3>Guestbook</h3>
-        <p>Leave a note for other visitors.</p>
-        <a class="pill-btn" href="https://harshulmoon.atabook.org/?page=1" target="_blank" rel="noopener">Sign guestbook</a>
+      <div class="lb-card">
+        <h2>⭕ Tic-Tac-Toe champions</h2>
+        <ol class="lb-list" id="lbTicTacToe"><li class="lb-empty">Loading&hellip;</li></ol>
       </div>
+      <div class="lb-card">
+        <h2>🔥 Longest streaks</h2>
+        <ol class="lb-list" id="lbStreaks"><li class="lb-empty">Loading&hellip;</li></ol>
+      </div>
+      <div class="lb-card">
+        <h2>💬 Most chatty</h2>
+        <ol class="lb-list" id="lbChatty"><li class="lb-empty">Loading&hellip;</li></ol>
+      </div>
+    </section>
+
+    <section id="achievements">
+      <div class="page-hero" style="padding-top:0">
+        <h1 style="font-size:24px">Your achievements</h1>
+        <p>Unlocked as you play, chat, and comment around the site.</p>
+      </div>
+      <div class="ach-grid" id="achGrid"></div>
     </section>
   </div>
 </main>
@@ -112,5 +133,6 @@ applyBrandMode();
 <script type="module" src="identity.js"></script>
 <script type="module" src="profile.js"></script>
 <script type="module" src="chat.js"></script>
+<script type="module" src="leaderboards.js"></script>
 </body>
 </html>

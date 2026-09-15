@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link id="dynamic-favicon" rel="icon" href="resources/download.png">
+<title class="p1">Home | Compass</title>
+<meta name="application-name" content="Document1 - Word">
+<meta name="apple-mobile-web-app-title" content="Document1 - Word">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="resources/word.png">
+<meta name="description" content="Play Tic-Tac-Toe with a friend in real time on Moon Games — share a room link or code.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#5e5ce6">
+<link rel="stylesheet" href="styles.css">
+<script>
+function applyBrandMode() {
+    var mode = localStorage.getItem("brandMode") || "normal";
+    var favicon = document.getElementById("dynamic-favicon");
+    if (mode === "alt") {
+        document.title = "Dashboard";
+        favicon.href = "resources/canvas.png?v=1";
+    } else {
+        document.title = "Home | Compass";
+        favicon.href = "resources/download.png?v=1";
+    }
+}
+applyBrandMode();
+</script>
+<style>
+  .page-hero{ padding: var(--s-9) 0 var(--s-6); text-align: center; }
+  .page-hero h1{ font-size: clamp(30px,5vw,44px); letter-spacing:-.02em; margin:0 0 var(--s-3); }
+  .page-hero p{ color: var(--text-secondary); font-size: 17px; max-width: 620px; margin: 0 auto; }
+
+  .ttt-wrap{ display: flex; justify-content: center; padding-bottom: var(--s-9); }
+  .ttt-panel{
+    width: min(420px, 100%);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-l); padding: var(--s-6);
+    display: flex; flex-direction: column; align-items: center; gap: var(--s-4);
+    text-align: center;
+  }
+  .ttt-lobby-actions{ display: flex; flex-direction: column; gap: var(--s-4); width: 100%; }
+  .ttt-join-row{ display: flex; gap: var(--s-2); }
+  .ttt-join-row input{
+    flex: 1; min-width: 0; text-align: center; letter-spacing: .1em; text-transform: uppercase;
+    padding: 9px var(--s-3); border-radius: var(--radius-pill); border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-primary); font-size: 14px; font-weight: 700; outline: none;
+  }
+  .ttt-lobby-msg{ color: var(--danger); font-size: 13px; margin: 0; }
+
+  .ttt-code{ font-size: 36px; font-weight: 800; letter-spacing: .12em; }
+  .ttt-waiting-msg{ color: var(--text-secondary); font-size: 13px; margin: 0; }
+
+  .ttt-players{ display: flex; align-items: center; gap: var(--s-4); width: 100%; justify-content: center; }
+  .ttt-player{ display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; }
+  .ttt-player-name{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+  .ttt-player-empty{ color: var(--text-tertiary); font-weight: 400; }
+  .ttt-player-offline{ color: var(--danger); font-size: 11px; }
+  .ttt-vs{ color: var(--text-tertiary); font-size: 12px; }
+
+  .ttt-status{ font-size: 15px; font-weight: 700; }
+  .ttt-board{
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    width: 100%; max-width: 300px; aspect-ratio: 1;
+  }
+  .ttt-cell{
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-m);
+    font-size: 36px; font-weight: 800; cursor: pointer; color: var(--text-primary);
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s var(--ease), transform .1s var(--ease);
+  }
+  .ttt-cell:disabled{ cursor: default; }
+  .ttt-cell:not(:disabled):hover{ background: var(--border); }
+  .ttt-cell:active:not(:disabled){ transform: scale(.95); }
+  .ttt-cell.x{ color: var(--accent-2); }
+  .ttt-cell.o{ color: var(--accent); }
+  .ttt-cell.win{ background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); }
+
+  .ttt-board-actions{ display: flex; gap: var(--s-2); }
+</style>
+</head>
+<body>
+
+<a class="sr-only" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html" aria-label="Moon Games home">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Moon Games
+    </a>
+    <div class="nav-actions" style="margin-left:auto">
+      <a class="icon-btn" id="leaderboardBtn" href="leaderboards.html" aria-label="Leaderboards" title="Leaderboards">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4a1 1 0 0 0-1 1c0 2.5 1.5 4 4 4.3M17 6h3a1 1 0 0 1 1 1c0 2.5-1.5 4-4 4.3"/></svg>
+      </a>
+      <button class="icon-btn" id="profileBtn" aria-label="Your profile" title="Your profile"></button>
+      <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode" title="Toggle appearance">
+        <span class="theme-icon">
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8L6 18M18 6l1.8-1.8"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>
+        </span>
+      </button>
+      <a class="pill-btn" href="index.html">Back to games</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="container">
+    <section class="page-hero">
+      <h1>Tic-Tac-Toe</h1>
+      <p>Play a friend in real time. Create a room and share the link, or join one with a code.</p>
+    </section>
+
+    <section class="ttt-wrap">
+      <div class="ttt-panel" id="tttLobby">
+        <div class="ttt-lobby-actions">
+          <button class="pill-btn primary" id="tttCreateBtn">Create a room</button>
+          <div class="ttt-join-row">
+            <input type="text" id="tttJoinCode" placeholder="Room code" maxlength="5" aria-label="Room code">
+            <button class="pill-btn" id="tttJoinBtn">Join</button>
+          </div>
+        </div>
+        <p class="ttt-lobby-msg" id="tttLobbyMsg" hidden></p>
+      </div>
+
+      <div class="ttt-panel" id="tttWaiting" hidden>
+        <p style="margin:0;color:var(--text-secondary);font-size:13px">Room code</p>
+        <div class="ttt-code" id="tttCode"></div>
+        <button class="pill-btn primary" id="tttCopyBtn">Copy invite link</button>
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="ttt-waiting-msg">Waiting for opponent&hellip;</p>
+        <button class="pill-btn" id="tttLeaveWaitingBtn">Cancel</button>
+      </div>
+
+      <div class="ttt-panel" id="tttBoardPanel" hidden>
+        <div class="ttt-players">
+          <div class="ttt-player" id="tttPlayerX"></div>
+          <span class="ttt-vs">vs</span>
+          <div class="ttt-player" id="tttPlayerO"></div>
+        </div>
+        <div class="ttt-status" id="tttStatus"></div>
+        <div class="ttt-board" id="tttBoard" role="grid" aria-label="Tic-Tac-Toe board"></div>
+        <div class="ttt-board-actions">
+          <button class="pill-btn primary" id="tttRematchBtn" hidden>Rematch</button>
+          <button class="pill-btn" id="tttLeaveBtn">Leave room</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="dedication">
+      <img src="resources/boxhill-crest.jpg" alt="Box Hill High School crest" class="dedication-crest">
+      <p>Dedicated to the students of Box Hill High and their determination to be on a free internet. We shall never surrender.</p>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span id="year"></span> Moon Games</span>
+      <a href="index.html">Home</a>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="chrome.js"></script>
+<script type="module" src="identity.js"></script>
+<script type="module" src="profile.js"></script>
+<script type="module" src="chat.js"></script>
+<script type="module" src="tictactoe.js"></script>
+</body>
+</html>

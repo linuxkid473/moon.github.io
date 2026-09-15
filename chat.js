@@ -1,10 +1,16 @@
 /* Moon Games chat drawer — same public chatroom backend as the original
    harshulgoon.github.io/chatroom.html (Firebase Realtime Database), just
    rebuilt as a site-wide, gameplay-integrated drawer with a matching UI. */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getDatabase, ref, push, onChildAdded, serverTimestamp, limitToLast, query
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import {
+  getIdentity, onIdentityChange, setUsername, recordChatMessage,
+  AVATAR_EMOJIS, AVATAR_COLORS
+} from "./identity.js";
+import { startPresence, subscribeOnlineUsers } from "./presence.js";
+import { censorText, isProfanityFilterOn, setProfanityFilterPref, hasStoredProfanityPref } from "./profanity.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDWLUjSbCBuj5SR7MoqLo46EArhz_m4INc",
@@ -18,7 +24,6 @@ const firebaseConfig = {
 };
 const GIPHY_API_KEY = "U0f10I8Pc4dCa5Rc1nyBtfIV3tJ1wSOH";
 
-const AVATAR_COLORS = ["#ff6b6b","#f7b731","#20bf6b","#0fb9b1","#2d98da","#8854d0","#eb3b5a","#fa8231"];
 function colorFor(name){
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -57,11 +62,18 @@ panel.innerHTML = `
     <span class="dot" aria-hidden="true"></span>
     <div>
       <h3>Moon Games Chat</h3>
-      <span>Live &middot; everyone playing right now</span>
+      <span id="chatLiveCount">Live &middot; everyone playing right now</span>
     </div>
     <div class="spacer"></div>
     <button class="icon-btn" id="chatFilterBtn" aria-label="Toggle swear word filter" aria-pressed="false" title="Filter swear words">${ICON_FILTER}</button>
     <button class="icon-btn" id="chatCloseBtn" aria-label="Close chat">${ICON_CLOSE}</button>
+  </div>
+  <div class="chat-online" id="chatOnline">
+    <button class="chat-online-toggle" id="chatOnlineToggle" aria-expanded="false">
+      <span id="chatOnlineToggleLabel">Who's online (0)</span>
+      <span aria-hidden="true">▾</span>
+    </button>
+    <div class="chat-online-list" id="chatOnlineList" hidden></div>
   </div>
   <div class="chat-filter-prompt" id="chatFilterPrompt" hidden>
     <p>Filter swear words in chat?</p>
@@ -116,24 +128,38 @@ const els = {
   filterPrompt: document.getElementById("chatFilterPrompt"),
   filterYesBtn: document.getElementById("chatFilterYes"),
   filterNoBtn: document.getElementById("chatFilterNo"),
+  liveCount: document.getElementById("chatLiveCount"),
+  onlineToggle: document.getElementById("chatOnlineToggle"),
+  onlineToggleLabel: document.getElementById("chatOnlineToggleLabel"),
+  onlineList: document.getElementById("chatOnlineList"),
 };
 
+/* ---------------- Presence ---------------- */
+startPresence();
+let onlineListOpen = false;
+els.onlineToggle.addEventListener("click", () => {
+  onlineListOpen = !onlineListOpen;
+  els.onlineToggle.setAttribute("aria-expanded", String(onlineListOpen));
+  els.onlineList.hidden = !onlineListOpen;
+});
+subscribeOnlineUsers(users => {
+  const n = users.length;
+  els.liveCount.textContent = n === 1 ? "1 person online now" : `${n} people online now`;
+  els.onlineToggleLabel.textContent = `Who's online (${n})`;
+  els.onlineList.innerHTML = users.map(u => `
+    <div class="chat-online-row">
+      <span class="profile-avatar" style="background:${AVATAR_COLORS.includes(u.avatarColor) ? u.avatarColor : "#5e5ce6"}">${AVATAR_EMOJIS.includes(u.avatarEmoji) ? u.avatarEmoji : "🙂"}</span>
+      <span></span>
+    </div>`).join("");
+  // Set the username text nodes via textContent (never innerHTML) since it's untrusted.
+  [...els.onlineList.querySelectorAll(".chat-online-row span:last-child")].forEach((el, i) => {
+    el.textContent = users[i].username;
+  });
+});
+
 /* ---------------- Profanity filter (client-side only, opt-in) ---------------- */
-const PROFANITY_STORAGE_KEY = "chatProfanityFilter"; // "on" | "off"
-const PROFANITY_WORDS = [
-  "fuck","shit","bitch","asshole","bastard","cunt","dick","piss","pussy",
-  "slut","whore","fag","faggot","nigger","nigga","retard","cock","twat",
-  "damn","crap"
-];
-const PROFANITY_RE = new RegExp("\\b(?:" + PROFANITY_WORDS.join("|") + ")\\w*", "gi");
-function censorText(text){
-  return text.replace(PROFANITY_RE, (match) => match[0] + "*".repeat(Math.max(match.length - 1, 1)));
-}
-function isProfanityFilterOn(){
-  return localStorage.getItem(PROFANITY_STORAGE_KEY) === "on";
-}
 function setProfanityFilter(on){
-  localStorage.setItem(PROFANITY_STORAGE_KEY, on ? "on" : "off");
+  setProfanityFilterPref(on);
   els.filterBtn.classList.toggle("active", on);
   els.filterBtn.setAttribute("aria-pressed", String(on));
   // Re-apply to already-rendered text bubbles without re-fetching anything.
@@ -148,7 +174,7 @@ function openFilterPrompt(){
 function closeFilterPrompt(){
   els.filterPrompt.hidden = true;
 }
-const hadStoredProfanityPref = localStorage.getItem(PROFANITY_STORAGE_KEY) !== null;
+const hadStoredProfanityPref = hasStoredProfanityPref();
 els.filterBtn.addEventListener("click", () => setProfanityFilter(!isProfanityFilterOn()));
 els.filterYesBtn.addEventListener("click", () => { setProfanityFilter(true); closeFilterPrompt(); });
 els.filterNoBtn.addEventListener("click", () => { setProfanityFilter(false); closeFilterPrompt(); });
@@ -179,10 +205,12 @@ function trapFocus(e){
   }
 }
 
-const savedName = localStorage.getItem("chatUsername");
-if (savedName) els.username.value = savedName;
+els.username.value = getIdentity().username;
 els.username.addEventListener("change", () => {
-  localStorage.setItem("chatUsername", els.username.value.trim());
+  setUsername(els.username.value);
+});
+onIdentityChange(identity => {
+  if (document.activeElement !== els.username) els.username.value = identity.username;
 });
 
 function setOpen(open){
@@ -196,7 +224,7 @@ function setOpen(open){
     setTimeout(() => els.input.focus(), 200);
     els.messages.scrollTop = els.messages.scrollHeight;
     els.panel.addEventListener("keydown", trapFocus);
-    if (!hadStoredProfanityPref && localStorage.getItem(PROFANITY_STORAGE_KEY) === null) openFilterPrompt();
+    if (!hadStoredProfanityPref && !hasStoredProfanityPref()) openFilterPrompt();
   } else {
     closeGifPicker();
     els.panel.removeEventListener("keydown", trapFocus);
@@ -218,7 +246,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ---------------- Firebase ---------------- */
-const app = initializeApp(firebaseConfig);
+const app = getApps().some(a => a.name === "[DEFAULT]") ? getApp() : initializeApp(firebaseConfig);
 const database = getDatabase(app);
 const messagesRef = ref(database, "messages");
 const recentMessagesQuery = query(messagesRef, limitToLast(50));
@@ -255,9 +283,13 @@ function renderMessage(message){
   const text = safeString(message.text, MAX_TEXT_LEN);
   const gifUrl = typeof message.gifUrl === "string" && GIF_URL_RE.test(message.gifUrl) ? message.gifUrl : null;
   const timestamp = typeof message.timestamp === "number" ? message.timestamp : null;
+  const avatarEmoji = AVATAR_EMOJIS.includes(message.avatarEmoji) ? message.avatarEmoji : null;
+  const avatarColor = AVATAR_COLORS.includes(message.avatarColor) ? message.avatarColor : null;
+  const identityId = typeof message.identityId === "string" ? message.identityId.slice(0, 60) : null;
 
-  const myName = (els.username.value || "Anonymous").trim();
-  const isOwn = username === myName && myName !== "Anonymous";
+  const isOwn = identityId
+    ? identityId === getIdentity().id
+    : username === (els.username.value || "Anonymous").trim() && username !== "Anonymous";
 
   const time = timestamp
     ? new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -268,8 +300,14 @@ function renderMessage(message){
 
   const avatar = document.createElement("div");
   avatar.className = "chat-avatar";
-  avatar.style.background = colorFor(username);
-  avatar.textContent = initials(username);
+  if (avatarEmoji){
+    avatar.style.background = avatarColor || colorFor(username);
+    avatar.style.fontSize = "14px";
+    avatar.textContent = avatarEmoji;
+  } else {
+    avatar.style.background = colorFor(username);
+    avatar.textContent = initials(username);
+  }
 
   const col = document.createElement("div");
   col.className = "chat-bubble-col";
@@ -308,18 +346,24 @@ function renderMessage(message){
   els.messages.scrollTop = els.messages.scrollHeight;
 }
 
+function identityFields(){
+  const identity = getIdentity();
+  return { identityId: identity.id, avatarEmoji: identity.avatarEmoji, avatarColor: identity.avatarColor };
+}
 function sendMessage(){
   const text = els.input.value.trim();
   if (!text) return;
   const username = els.username.value.trim() || "Anonymous";
-  push(messagesRef, { username, text, timestamp: serverTimestamp() });
+  push(messagesRef, { username, text, timestamp: serverTimestamp(), ...identityFields() });
+  recordChatMessage();
   els.input.value = "";
   autosize();
   updateSendState();
 }
 function sendGif(gifUrl){
   const username = els.username.value.trim() || "Anonymous";
-  push(messagesRef, { username, gifUrl, timestamp: serverTimestamp() });
+  push(messagesRef, { username, gifUrl, timestamp: serverTimestamp(), ...identityFields() });
+  recordChatMessage();
 }
 
 function updateSendState(){
