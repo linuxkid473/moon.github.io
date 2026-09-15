@@ -120,29 +120,40 @@ async function joinRoomByCode(code){
   if (!code) return;
   els.joinBtn.disabled = true;
   clearLobbyMsg();
+
+  const roomRef = ref(database, "rooms/" + code);
+  // Firebase RTDB transactions only see the real current value while an
+  // active listener is already attached to that exact path — on a tab that
+  // has never synced this path before, runTransaction sees current=null
+  // FOREVER (not just a transient first pass) even though a plain get()
+  // moments earlier correctly shows the data exists. So attach a listener
+  // and keep it alive for the whole join attempt, including the transaction.
+  let unsub;
   try {
-    const roomRef = ref(database, "rooms/" + code);
-    const snap = await get(roomRef);
-    if (!snap.exists()){ showLobbyMsg("Room not found."); return; }
-    const room = snap.val();
+    const latest = await new Promise(resolve => {
+      unsub = onValue(roomRef, snap => resolve(snap.val()), { onlyOnce: false });
+    });
+
+    if (latest === null){ showLobbyMsg("Room not found."); return; }
     const myId = getIdentity().id;
 
-    if (room.players?.X?.id === myId){
+    if (latest.players?.X?.id === myId){
       myRole = "X";
       await update(ref(database, `rooms/${code}/players/X`), { connected: true });
       enterRoom(code);
       return;
     }
-    if (room.players?.O?.id === myId){
+    if (latest.players?.O?.id === myId){
       myRole = "O";
       await update(ref(database, `rooms/${code}/players/O`), { connected: true });
       enterRoom(code);
       return;
     }
-    if (room.status !== "waiting" || room.players?.O){
+    if (latest.status !== "waiting" || latest.players?.O){
       showLobbyMsg("Room is full or finished.");
       return;
     }
+
     const txResult = await runTransaction(roomRef, current => {
       if (!current) return;
       if (current.status === "waiting" && !current.players?.O){
@@ -159,6 +170,7 @@ async function joinRoomByCode(code){
   } catch {
     showLobbyMsg("Couldn't join that room.");
   } finally {
+    unsub?.();
     els.joinBtn.disabled = false;
   }
 }
