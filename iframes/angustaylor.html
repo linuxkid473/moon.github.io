@@ -71,24 +71,49 @@ applyBrandMode();
   <div id="wrap">
     <div id="hud">Angus Taylor: Fighting Taxes</div>
     <canvas id="game" width="800" height="450"></canvas>
-    <div id="hint">Space / Up / Tap to jump &nbsp;•&nbsp; Dodge the Paperwork &nbsp;•&nbsp; Stamp the Tax Cuts</div>
+    <div id="hint">Space / Up / Tap to jump &nbsp;•&nbsp; Dodge the Paperwork &nbsp;•&nbsp; Watch for Albanese &amp; Hanson</div>
   </div>
 
   <script>
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
 
+    const W = 800, H = 450;
+    const DPR = Math.min(window.devicePixelRatio || 1, 3);
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.scale(DPR, DPR);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
     const face = new Image();
     let faceReady = false;
     face.onload = () => faceReady = true;
     face.src = '../resources/angustaylor-face.png';
+
+    const rivalFaces = {
+      albanese: new Image(),
+      hanson: new Image()
+    };
+    const rivalFaceReady = { albanese: false, hanson: false };
+    rivalFaces.albanese.onload = () => rivalFaceReady.albanese = true;
+    rivalFaces.hanson.onload = () => rivalFaceReady.hanson = true;
+    rivalFaces.albanese.src = '../resources/albanese-face.png';
+    rivalFaces.hanson.src = '../resources/hanson-face.png';
+
+    const RIVAL_INFO = {
+      albanese: { name: 'ALBANESE', slogan: 'TAX HIKE!', suit: '#8a1f2b' },
+      hanson: { name: 'HANSON', slogan: 'RED TAPE!', suit: '#c05a1b' }
+    };
 
     const GROUND_Y = 360;
 
     let state = 'ready'; // ready | playing | over
     let score = 0;
     let best = Number(localStorage.getItem('angusTaylorBest') || 0);
-    let speed = 5.2;
+    let speed = 3.8;
     let frame = 0;
 
     const player = {
@@ -100,18 +125,22 @@ applyBrandMode();
       jumping: false
     };
 
-    const GRAVITY = 0.9;
-    const JUMP_V = -15.5;
+    const GRAVITY = 0.62;
+    const JUMP_V = -13.5;
 
     let obstacles = [];
     let coins = [];
+    let rivals = [];
+    let nextRivalScore = 90;
 
     function reset() {
       score = 0;
-      speed = 5.2;
+      speed = 3.8;
       frame = 0;
       obstacles = [];
       coins = [];
+      rivals = [];
+      nextRivalScore = 90;
       player.y = GROUND_Y;
       player.vy = 0;
       player.jumping = false;
@@ -138,10 +167,10 @@ applyBrandMode();
     function spawnObstacle() {
       // a stack of tax paperwork sliding across the office floor
       obstacles.push({
-        x: canvas.width + 20,
+        x: W + 20,
         y: GROUND_Y + 4,
         w: 40,
-        h: 36 + Math.floor(Math.random() * 3) * 8,
+        h: 28 + Math.floor(Math.random() * 2) * 8,
         label: 'TAX\nFORM'
       });
     }
@@ -149,22 +178,34 @@ applyBrandMode();
     function spawnCoin() {
       // a "tax cut approved" stamp floating past
       coins.push({
-        x: canvas.width + 20,
+        x: W + 20,
         y: GROUND_Y - 90 - Math.random() * 60,
         r: 16
+      });
+    }
+
+    function spawnRival() {
+      const type = Math.random() < 0.5 ? 'albanese' : 'hanson';
+      rivals.push({
+        type,
+        x: W + 30,
+        y: GROUND_Y + 4,
+        w: 58,
+        h: 96,
+        passed: false
       });
     }
 
     function drawOffice() {
       // back wall
       ctx.fillStyle = '#e4e9f0';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, W, H);
 
       // ceiling band + fluorescent lights
       ctx.fillStyle = '#c7d0da';
-      ctx.fillRect(0, 0, canvas.width, 34);
+      ctx.fillRect(0, 0, W, 34);
       for (let i = 0; i < 6; i++) {
-        const lx = ((i * 150) - (frame * 0.6) % 900 + canvas.width) % (canvas.width + 150) - 75;
+        const lx = ((i * 150) - (frame * 0.6) % 900 + W) % (W + 150) - 75;
         ctx.fillStyle = '#fdfdf2';
         ctx.fillRect(lx, 10, 90, 12);
         ctx.strokeStyle = '#aeb8c2';
@@ -173,13 +214,13 @@ applyBrandMode();
 
       // window strip with skyline
       ctx.fillStyle = '#9fc3e0';
-      ctx.fillRect(0, 60, canvas.width, 130);
+      ctx.fillRect(0, 60, W, 130);
       ctx.strokeStyle = '#7a8b9c';
       ctx.lineWidth = 6;
-      ctx.strokeRect(0, 60, canvas.width, 130);
+      ctx.strokeRect(0, 60, W, 130);
       ctx.fillStyle = '#6f93b8';
       for (let i = 0; i < 7; i++) {
-        const bx = ((i * 130) - (frame * 1.4) % 910 + canvas.width) % (canvas.width + 130) - 65;
+        const bx = ((i * 130) - (frame * 1.4) % 910 + W) % (W + 130) - 65;
         const bh = 40 + (i % 3) * 22;
         ctx.fillRect(bx, 190 - bh, 46, bh);
       }
@@ -187,16 +228,16 @@ applyBrandMode();
       ctx.lineWidth = 3;
       for (let i = 1; i < 5; i++) {
         ctx.beginPath();
-        ctx.moveTo(i * (canvas.width / 5), 60);
-        ctx.lineTo(i * (canvas.width / 5), 190);
+        ctx.moveTo(i * (W / 5), 60);
+        ctx.lineTo(i * (W / 5), 190);
         ctx.stroke();
       }
 
       // cubicle wall band with scrolling filing cabinets / partitions
       ctx.fillStyle = '#d7c9b8';
-      ctx.fillRect(0, 190, canvas.width, GROUND_Y - 190 + player.h + 10);
+      ctx.fillRect(0, 190, W, GROUND_Y - 190 + player.h + 10);
       for (let i = 0; i < 6; i++) {
-        const cx = ((i * 200) - (frame * 1.9) % 1200 + canvas.width) % (canvas.width + 200) - 100;
+        const cx = ((i * 200) - (frame * 1.9) % 1200 + W) % (W + 200) - 100;
         ctx.fillStyle = '#c3b39d';
         ctx.fillRect(cx, 210, 26, GROUND_Y - 190);
         ctx.fillStyle = '#8b8378';
@@ -209,18 +250,18 @@ applyBrandMode();
 
       // carpet floor
       ctx.fillStyle = '#8b7d6b';
-      ctx.fillRect(0, GROUND_Y + player.h, canvas.width, canvas.height - (GROUND_Y + player.h));
+      ctx.fillRect(0, GROUND_Y + player.h, W, H - (GROUND_Y + player.h));
       ctx.strokeStyle = '#756a5a';
       ctx.lineWidth = 1;
       for (let i = 0; i < 16; i++) {
-        const fx = ((i * 60) - (frame * speed * 0.35) % 960 + canvas.width) % (canvas.width + 60) - 30;
+        const fx = ((i * 60) - (frame * speed * 0.35) % 960 + W) % (W + 60) - 30;
         ctx.beginPath();
         ctx.moveTo(fx, GROUND_Y + player.h);
-        ctx.lineTo(fx, canvas.height);
+        ctx.lineTo(fx, H);
         ctx.stroke();
       }
       ctx.fillStyle = '#7a2f3a';
-      ctx.fillRect(0, GROUND_Y + player.h, canvas.width, 4);
+      ctx.fillRect(0, GROUND_Y + player.h, W, 4);
     }
 
     function drawPlayer() {
@@ -258,24 +299,88 @@ applyBrandMode();
 
       // head
       if (faceReady) {
+        const r = 20;
         ctx.save();
         ctx.beginPath();
-        ctx.arc(23, -2, 17, 0, Math.PI * 2);
+        ctx.arc(23, -4, r, 0, Math.PI * 2);
         ctx.closePath();
         ctx.clip();
-        ctx.drawImage(face, 23 - 17, -2 - 17, 34, 34);
+        ctx.drawImage(face, 23 - r, -4 - r, r * 2, r * 2);
         ctx.restore();
         ctx.strokeStyle = 'rgba(0,0,0,0.15)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(23, -2, 17, 0, Math.PI * 2);
+        ctx.arc(23, -4, r, 0, Math.PI * 2);
         ctx.stroke();
       } else {
         ctx.fillStyle = '#f0c8a0';
         ctx.beginPath();
-        ctx.arc(23, -2, 16, 0, Math.PI * 2);
+        ctx.arc(23, -4, 16, 0, Math.PI * 2);
         ctx.fill();
       }
+
+      ctx.restore();
+    }
+
+    function drawRival(r) {
+      const info = RIVAL_INFO[r.type];
+      const img = rivalFaces[r.type];
+      const imgReady = rivalFaceReady[r.type];
+      const x = r.x, y = r.y;
+      ctx.save();
+      ctx.translate(x, y);
+
+      // legs
+      ctx.fillStyle = '#1c1c22';
+      ctx.fillRect(8, 56, 16, 30);
+      ctx.fillRect(34, 56, 16, 30);
+
+      // suit body
+      ctx.fillStyle = info.suit;
+      ctx.fillRect(4, 10, 50, 48);
+
+      // shirt collar
+      ctx.fillStyle = '#f4f6f8';
+      ctx.beginPath();
+      ctx.moveTo(22, 10);
+      ctx.lineTo(29, 24);
+      ctx.lineTo(36, 10);
+      ctx.closePath();
+      ctx.fill();
+
+      // face
+      const faceR = 26;
+      const faceCx = 29, faceCy = -6;
+      if (imgReady) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(faceCx, faceCy, faceR, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(img, faceCx - faceR, faceCy - faceR, faceR * 2, faceR * 2);
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(faceCx, faceCy, faceR, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#f0c8a0';
+        ctx.beginPath();
+        ctx.arc(faceCx, faceCy, faceR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // name plaque + slogan floating above
+      ctx.fillStyle = '#1c1c22';
+      ctx.fillRect(faceCx - 40, faceCy - faceR - 30, 80, 20);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.fillText(info.name, faceCx, faceCy - faceR - 20);
+      ctx.fillStyle = '#ffd23f';
+      ctx.font = 'bold 8px Segoe UI';
+      ctx.fillText(info.slogan, faceCx, faceCy - faceR - 8);
 
       ctx.restore();
     }
@@ -343,20 +448,38 @@ applyBrandMode();
           player.jumping = false;
         }
 
-        if (frame % Math.max(35, 70 - Math.floor(speed * 4)) === 0) spawnObstacle();
+        if (frame % Math.max(55, 95 - Math.floor(speed * 4)) === 0) spawnObstacle();
         if (frame % 90 === 0) spawnCoin();
+        if (score >= nextRivalScore && rivals.length === 0) {
+          spawnRival();
+          nextRivalScore = score + 140 + Math.random() * 80;
+        }
 
         obstacles.forEach(o => o.x -= speed);
         coins.forEach(c => c.x -= speed);
+        rivals.forEach(r => r.x -= speed);
         obstacles = obstacles.filter(o => o.x + o.w > -10);
         coins = coins.filter(c => c.x + c.r > -10);
+        rivals = rivals.filter(r => r.x + r.w > -20);
 
-        const px = player.x, py = player.y - player.h, pw = player.w, ph = player.h;
+        // slightly inset hitboxes vs. the drawn art so near-misses feel fair
+        const pad = 6;
+        const px = player.x + pad, py = player.y - player.h + pad, pw = player.w - pad * 2, ph = player.h - pad * 2;
         for (const o of obstacles) {
-          if (rectsOverlap(px, py, pw, ph, o.x, o.y - o.h, o.w, o.h)) {
+          if (rectsOverlap(px, py, pw, ph, o.x + 3, o.y - o.h + 3, o.w - 6, o.h - 6)) {
             state = 'over';
             best = Math.max(best, Math.floor(score));
             localStorage.setItem('angusTaylorBest', best);
+          }
+        }
+        for (const r of rivals) {
+          if (rectsOverlap(px, py, pw, ph, r.x + 6, r.y - r.h + 6, r.w - 12, r.h - 6)) {
+            state = 'over';
+            best = Math.max(best, Math.floor(score));
+            localStorage.setItem('angusTaylorBest', best);
+          } else if (!r.passed && r.x + r.w < player.x) {
+            r.passed = true;
+            score += 75;
           }
         }
         coins = coins.filter(c => {
@@ -366,7 +489,7 @@ applyBrandMode();
         });
 
         score += 0.12;
-        speed += 0.0025;
+        speed = Math.min(speed + 0.0015, 7.5);
       }
     }
 
@@ -374,6 +497,7 @@ applyBrandMode();
       drawOffice();
       obstacles.forEach(drawObstacle);
       coins.forEach(drawCoin);
+      rivals.forEach(drawRival);
       drawPlayer();
 
       ctx.fillStyle = '#26313f';
@@ -381,7 +505,7 @@ applyBrandMode();
       ctx.font = 'bold 18px Segoe UI';
       ctx.fillText('Score: ' + Math.floor(score), 16, 28);
       ctx.textAlign = 'right';
-      ctx.fillText('Best: ' + best, canvas.width - 16, 28);
+      ctx.fillText('Best: ' + best, W - 16, 28);
 
       if (state === 'ready') {
         overlay('Angus Taylor: Fighting Taxes', 'Press Space or tap to start - dodge the paperwork, stamp the tax cuts');
@@ -392,14 +516,14 @@ applyBrandMode();
 
     function overlay(title, sub) {
       ctx.fillStyle = 'rgba(20, 24, 32, 0.6)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
       ctx.font = 'bold 28px Segoe UI';
-      ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 10);
+      ctx.fillText(title, W / 2, H / 2 - 10);
       ctx.font = '15px Segoe UI';
       ctx.fillStyle = '#dbe2ea';
-      ctx.fillText(sub, canvas.width / 2, canvas.height / 2 + 22);
+      ctx.fillText(sub, W / 2, H / 2 + 22);
     }
 
     function loop() {
