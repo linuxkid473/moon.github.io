@@ -690,32 +690,6 @@ body.search-active .exclusives-section{
   color: var(--text-secondary);
   font-size: 13px;
 }
-.dedication{
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  padding-bottom: var(--s-6);
-  margin-bottom: var(--s-6);
-  border-bottom: 1px solid var(--border);
-}
-.dedication-crest{
-  width: 44px; height: 44px;
-  border-radius: 10px;
-  object-fit: cover;
-  flex: none;
-  box-shadow: 0 2px 8px hsl(var(--shadow-color) / .15);
-}
-.dedication p{
-  margin: 0;
-  font-size: 13px;
-  font-style: italic;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  max-width: 560px;
-}
-@media (max-width: 500px){
-  .dedication{ flex-direction: column; text-align: center; gap: var(--s-2); }
-}
 .footer-grid{
   display: grid;
   grid-template-columns: 1.4fr repeat(3, 1fr);
