@@ -14,6 +14,8 @@
   let query = "";
 
   const grid = document.getElementById("grid");
+  const exclusivesSection = document.getElementById("exclusivesSection");
+  const exclusivesGrid = document.getElementById("exclusivesGrid");
   const emptyState = document.getElementById("emptyState");
   const resultsMeta = document.getElementById("resultsMeta");
   const chipRow = document.getElementById("chipRow");
@@ -68,6 +70,16 @@
       : `${filtered.length} games available`;
   }
 
+  function renderExclusives(){
+    const exclusives = ALL_GAMES.filter(g => g.exclusive);
+    if (!exclusives.length){
+      exclusivesSection.hidden = true;
+      return;
+    }
+    exclusivesGrid.innerHTML = exclusives.map(cardTemplate).join("");
+    exclusivesSection.hidden = false;
+  }
+
   function buildChips(genres){
     const counts = {};
     ALL_GAMES.forEach(g => g.genres.forEach(gr => counts[gr] = (counts[gr]||0)+1));
@@ -107,17 +119,21 @@
     render();
   });
 
-  grid?.addEventListener("click", (e) => {
+  function handleCardClick(e){
     const card = e.target.closest(".card");
     if (card) openPlayer(card.dataset.href, card.dataset.title);
-  });
-  grid?.addEventListener("keydown", (e) => {
+  }
+  function handleCardKeydown(e){
     if (e.key !== "Enter" && e.key !== " ") return;
     const card = e.target.closest(".card");
     if (!card) return;
     e.preventDefault();
     openPlayer(card.dataset.href, card.dataset.title);
-  });
+  }
+  grid?.addEventListener("click", handleCardClick);
+  grid?.addEventListener("keydown", handleCardKeydown);
+  exclusivesGrid?.addEventListener("click", handleCardClick);
+  exclusivesGrid?.addEventListener("keydown", handleCardKeydown);
 
   /* ---------------- Player modal ---------------- */
   const overlay = document.getElementById("playerOverlay");
@@ -244,6 +260,7 @@
     .then(data => {
       ALL_GAMES = data;
       gameCountEl.textContent = ALL_GAMES.length;
+      renderExclusives();
       buildChips();
       render();
       const hash = location.hash.replace("#", "");

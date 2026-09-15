@@ -1655,7 +1655,8 @@
     "genres": [
       "racing",
       "arcade"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "slicemaster",
@@ -1665,7 +1666,8 @@
     "genres": [
       "arcade",
       "skill"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "stonegrass",
@@ -1675,7 +1677,8 @@
     "genres": [
       "simulation",
       "idle"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "bowmasters",
@@ -1686,7 +1689,8 @@
       "action",
       "arcade",
       "multiplayer"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "supertuxkart",
@@ -1696,7 +1700,8 @@
     "genres": [
       "racing",
       "arcade"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "bulletforce",
@@ -1707,7 +1712,8 @@
       "action",
       "fps",
       "multiplayer"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "hazmobfps",
@@ -1718,7 +1724,8 @@
       "action",
       "fps",
       "multiplayer"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "layersroll",
@@ -1728,7 +1735,8 @@
     "genres": [
       "arcade",
       "casual"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "ovo",
@@ -1739,7 +1747,8 @@
       "platformer",
       "arcade",
       "skill"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "drifthunters",
@@ -1749,7 +1758,8 @@
     "genres": [
       "racing",
       "simulation"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "2048",
@@ -1758,7 +1768,8 @@
     "title": "2048",
     "genres": [
       "puzzle"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "cookieclicker",
@@ -1768,7 +1779,8 @@
     "genres": [
       "idle",
       "simulation"
-    ]
+    ],
+    "exclusive": true
   },
   {
     "id": "snake",
@@ -1778,6 +1790,18 @@
     "genres": [
       "arcade",
       "skill"
+    ],
+    "exclusive": true
+  },
+  {
+    "id": "sandboxcity",
+    "href": "iframes/sandboxcity.html",
+    "img": "https://imgs.crazygames.com/sandbox-city---cars-zombies-ragdolls_16x9/20250909075759/sandbox-city---cars-zombies-ragdolls_16x9-cover?metadata=none&quality=100&width=1200&height=630&fit=crop",
+    "title": "Sandbox City",
+    "genres": [
+      "action",
+      "sandbox",
+      "simulation"
     ]
   }
 ]
