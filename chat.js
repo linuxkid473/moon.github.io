@@ -27,12 +27,6 @@ function colorFor(name){
 function initials(name){
   return (name || "?").trim().slice(0, 2).toUpperCase();
 }
-function escapeHtml(text){
-  const div = document.createElement("div");
-  div.textContent = text ?? "";
-  return div.innerHTML;
-}
-
 /* ---------------- Build DOM ---------------- */
 const ICON_CHAT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
 const ICON_CLOSE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
@@ -186,14 +180,34 @@ onChildAdded(recentMessagesQuery, (snapshot) => {
 // crude "first batch has loaded" flag so we don't count history as unread
 setTimeout(() => { hasReceivedFirstBatch = true; }, 1200);
 
-function renderMessage(message){
-  if (!message) return;
-  els.empty.remove();
-  const myName = (els.username.value || "Anonymous").trim();
-  const isOwn = message.username === myName && myName !== "Anonymous";
+// Messages come straight out of a public Firebase Realtime Database that
+// anyone can write to directly (not just through this UI), so every field
+// is treated as fully untrusted: strict type/shape checks, no innerHTML
+// with any message-derived value, and GIFs only render when the URL is
+// actually a giphy.com media URL — never rendered as raw HTML.
+const GIF_URL_RE = /^https:\/\/media[0-9]*\.giphy\.com\/media\/.*\.(?:gif|webp|mp4)(?:\?.*)?$/i;
+const MAX_TEXT_LEN = 2000;
+const MAX_NAME_LEN = 40;
 
-  const time = message.timestamp
-    ? new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+function safeString(value, maxLen){
+  if (typeof value !== "string") return "";
+  return value.slice(0, maxLen);
+}
+
+function renderMessage(message){
+  if (!message || typeof message !== "object") return;
+  els.empty.remove();
+
+  const username = safeString(message.username, MAX_NAME_LEN).trim() || "Anonymous";
+  const text = safeString(message.text, MAX_TEXT_LEN);
+  const gifUrl = typeof message.gifUrl === "string" && GIF_URL_RE.test(message.gifUrl) ? message.gifUrl : null;
+  const timestamp = typeof message.timestamp === "number" ? message.timestamp : null;
+
+  const myName = (els.username.value || "Anonymous").trim();
+  const isOwn = username === myName && myName !== "Anonymous";
+
+  const time = timestamp
+    ? new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "now";
 
   const wrap = document.createElement("div");
@@ -201,23 +215,35 @@ function renderMessage(message){
 
   const avatar = document.createElement("div");
   avatar.className = "chat-avatar";
-  avatar.style.background = colorFor(message.username || "?");
-  avatar.textContent = initials(message.username);
+  avatar.style.background = colorFor(username);
+  avatar.textContent = initials(username);
 
   const col = document.createElement("div");
   col.className = "chat-bubble-col";
 
   const meta = document.createElement("div");
   meta.className = "chat-meta";
-  meta.innerHTML = `<span class="name">${escapeHtml(message.username || "Anonymous")}</span><span class="time">${time}</span>`;
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "name";
+  nameSpan.textContent = username;
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "time";
+  timeSpan.textContent = time;
+  meta.appendChild(nameSpan);
+  meta.appendChild(timeSpan);
 
   const bubble = document.createElement("div");
-  if (message.gifUrl){
+  if (gifUrl){
     bubble.className = "chat-bubble gif-bubble";
-    bubble.innerHTML = `<img src="${escapeHtml(message.gifUrl)}" alt="GIF" loading="lazy">`;
+    const img = document.createElement("img");
+    img.src = gifUrl;
+    img.alt = "GIF";
+    img.loading = "lazy";
+    img.referrerPolicy = "no-referrer";
+    bubble.appendChild(img);
   } else {
     bubble.className = "chat-bubble";
-    bubble.textContent = message.text || "";
+    bubble.textContent = text;
   }
 
   col.appendChild(meta);
