@@ -71,7 +71,7 @@ applyBrandMode();
   <div id="wrap">
     <div id="hud">Angus Taylor: Fighting Taxes</div>
     <canvas id="game" width="800" height="450"></canvas>
-    <div id="hint">Space / Up / Tap to jump &nbsp;•&nbsp; Dodge the Paperwork &nbsp;•&nbsp; Watch for Albanese &amp; Hanson</div>
+    <div id="hint">Space / Up / Tap to jump &nbsp;•&nbsp; Double jump when a rival shows up &nbsp;•&nbsp; Dodge the Paperwork</div>
   </div>
 
   <script>
@@ -125,13 +125,14 @@ applyBrandMode();
       jumping: false
     };
 
-    const GRAVITY = 0.45;
-    const JUMP_V = -11.5;
+    const GRAVITY = 0.4;
+    const JUMP_V = -14;
 
     let obstacles = [];
     let coins = [];
     let rivals = [];
     let nextRivalScore = 90;
+    let jumpsUsed = 0;
 
     function reset() {
       score = 0;
@@ -144,15 +145,18 @@ applyBrandMode();
       player.y = GROUND_Y;
       player.vy = 0;
       player.jumping = false;
+      jumpsUsed = 0;
       state = 'playing';
     }
 
     function jump() {
       if (state === 'ready') { reset(); return; }
       if (state === 'over') { reset(); return; }
-      if (!player.jumping) {
+      const maxJumps = rivals.length > 0 ? 2 : 1;
+      if (jumpsUsed < maxJumps) {
         player.vy = JUMP_V;
         player.jumping = true;
+        jumpsUsed++;
       }
     }
 
@@ -190,8 +194,8 @@ applyBrandMode();
         type,
         x: W + 30,
         y: GROUND_Y + 4,
-        w: 58,
-        h: 96,
+        w: 54,
+        h: 78,
         passed: false
       });
     }
@@ -446,6 +450,7 @@ applyBrandMode();
           player.y = GROUND_Y;
           player.vy = 0;
           player.jumping = false;
+          jumpsUsed = 0;
         }
 
         if (frame % Math.max(55, 95 - Math.floor(speed * 4)) === 0) spawnObstacle();
