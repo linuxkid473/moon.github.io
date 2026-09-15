@@ -1,4 +1,5 @@
 <html>
+  <meta charset="UTF-8">
   <link id="dynamic-favicon" rel="icon" type="image/png" href="resources/download.png">
       <title class="p1">Home | Compass</title>
 
@@ -24,7 +25,7 @@ applyBrandMode();
       margin: 0;
       padding: 0;
       height: 100%;
-      background: linear-gradient(#0a1a3c, #142e63);
+      background: linear-gradient(#dfe6ee, #b9c4d2);
       overflow: hidden;
       font-family: 'Segoe UI', Arial, sans-serif;
     }
@@ -37,10 +38,10 @@ applyBrandMode();
       justify-content: center;
     }
     canvas {
-      background: #1c3a75;
-      border: 4px solid #c8102e;
+      background: #cfd8e3;
+      border: 4px solid #7a2f3a;
       border-radius: 12px;
-      box-shadow: 0 0 30px rgba(0,0,0,0.5);
+      box-shadow: 0 0 30px rgba(0,0,0,0.35);
       max-width: 96vw;
       max-height: 96vh;
     }
@@ -49,10 +50,10 @@ applyBrandMode();
       top: 16px;
       left: 50%;
       transform: translateX(-50%);
-      color: #fff;
+      color: #26313f;
       font-size: 20px;
       font-weight: 700;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+      text-shadow: 0 1px 2px rgba(255,255,255,0.6);
       pointer-events: none;
       text-align: center;
     }
@@ -61,7 +62,7 @@ applyBrandMode();
       bottom: 16px;
       left: 50%;
       transform: translateX(-50%);
-      color: #cfd8ea;
+      color: #3a4656;
       font-size: 13px;
       pointer-events: none;
     }
@@ -70,12 +71,17 @@ applyBrandMode();
   <div id="wrap">
     <div id="hud">Angus Taylor: Fighting Taxes</div>
     <canvas id="game" width="800" height="450"></canvas>
-    <div id="hint">Space / Up / Tap to jump &nbsp;•&nbsp; Dodge the Tax Hikes &nbsp;•&nbsp; Grab the Tax Cuts</div>
+    <div id="hint">Space / Up / Tap to jump &nbsp;•&nbsp; Dodge the Paperwork &nbsp;•&nbsp; Stamp the Tax Cuts</div>
   </div>
 
   <script>
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
+
+    const face = new Image();
+    let faceReady = false;
+    face.onload = () => faceReady = true;
+    face.src = '../resources/angustaylor-face.png';
 
     const GROUND_Y = 360;
 
@@ -130,27 +136,90 @@ applyBrandMode();
     canvas.addEventListener('pointerdown', jump);
 
     function spawnObstacle() {
+      // a stack of tax paperwork sliding across the office floor
       obstacles.push({
         x: canvas.width + 20,
         y: GROUND_Y + 4,
-        w: 34,
-        h: 46,
-        label: 'TAX'
+        w: 40,
+        h: 36 + Math.floor(Math.random() * 3) * 8,
+        label: 'TAX\nFORM'
       });
     }
 
     function spawnCoin() {
+      // a "tax cut approved" stamp floating past
       coins.push({
         x: canvas.width + 20,
         y: GROUND_Y - 90 - Math.random() * 60,
-        r: 14
+        r: 16
       });
     }
 
-    function drawGround() {
-      ctx.fillStyle = '#12275a';
+    function drawOffice() {
+      // back wall
+      ctx.fillStyle = '#e4e9f0';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // ceiling band + fluorescent lights
+      ctx.fillStyle = '#c7d0da';
+      ctx.fillRect(0, 0, canvas.width, 34);
+      for (let i = 0; i < 6; i++) {
+        const lx = ((i * 150) - (frame * 0.6) % 900 + canvas.width) % (canvas.width + 150) - 75;
+        ctx.fillStyle = '#fdfdf2';
+        ctx.fillRect(lx, 10, 90, 12);
+        ctx.strokeStyle = '#aeb8c2';
+        ctx.strokeRect(lx, 10, 90, 12);
+      }
+
+      // window strip with skyline
+      ctx.fillStyle = '#9fc3e0';
+      ctx.fillRect(0, 60, canvas.width, 130);
+      ctx.strokeStyle = '#7a8b9c';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(0, 60, canvas.width, 130);
+      ctx.fillStyle = '#6f93b8';
+      for (let i = 0; i < 7; i++) {
+        const bx = ((i * 130) - (frame * 1.4) % 910 + canvas.width) % (canvas.width + 130) - 65;
+        const bh = 40 + (i % 3) * 22;
+        ctx.fillRect(bx, 190 - bh, 46, bh);
+      }
+      ctx.strokeStyle = '#5c7fa3';
+      ctx.lineWidth = 3;
+      for (let i = 1; i < 5; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * (canvas.width / 5), 60);
+        ctx.lineTo(i * (canvas.width / 5), 190);
+        ctx.stroke();
+      }
+
+      // cubicle wall band with scrolling filing cabinets / partitions
+      ctx.fillStyle = '#d7c9b8';
+      ctx.fillRect(0, 190, canvas.width, GROUND_Y - 190 + player.h + 10);
+      for (let i = 0; i < 6; i++) {
+        const cx = ((i * 200) - (frame * 1.9) % 1200 + canvas.width) % (canvas.width + 200) - 100;
+        ctx.fillStyle = '#c3b39d';
+        ctx.fillRect(cx, 210, 26, GROUND_Y - 190);
+        ctx.fillStyle = '#8b8378';
+        ctx.fillRect(cx + 60, 230, 34, 60);
+        ctx.fillStyle = '#5c564c';
+        ctx.fillRect(cx + 60, 244, 34, 3);
+        ctx.fillRect(cx + 60, 258, 34, 3);
+        ctx.fillRect(cx + 60, 272, 34, 3);
+      }
+
+      // carpet floor
+      ctx.fillStyle = '#8b7d6b';
       ctx.fillRect(0, GROUND_Y + player.h, canvas.width, canvas.height - (GROUND_Y + player.h));
-      ctx.fillStyle = '#c8102e';
+      ctx.strokeStyle = '#756a5a';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 16; i++) {
+        const fx = ((i * 60) - (frame * speed * 0.35) % 960 + canvas.width) % (canvas.width + 60) - 30;
+        ctx.beginPath();
+        ctx.moveTo(fx, GROUND_Y + player.h);
+        ctx.lineTo(fx, canvas.height);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#7a2f3a';
       ctx.fillRect(0, GROUND_Y + player.h, canvas.width, 4);
     }
 
@@ -160,16 +229,25 @@ applyBrandMode();
       ctx.translate(x, y);
 
       // legs
-      ctx.fillStyle = '#1a1a2e';
+      ctx.fillStyle = '#26313f';
       ctx.fillRect(6, 40, 12, 24);
       ctx.fillRect(28, 40, 12, 24);
 
       // suit body
-      ctx.fillStyle = '#1c3a75';
+      ctx.fillStyle = '#2d4a7a';
       ctx.fillRect(4, 8, 38, 36);
 
+      // shirt collar
+      ctx.fillStyle = '#f4f6f8';
+      ctx.beginPath();
+      ctx.moveTo(18, 8);
+      ctx.lineTo(23, 18);
+      ctx.lineTo(28, 8);
+      ctx.closePath();
+      ctx.fill();
+
       // tie
-      ctx.fillStyle = '#c8102e';
+      ctx.fillStyle = '#7a2f3a';
       ctx.beginPath();
       ctx.moveTo(23, 10);
       ctx.lineTo(19, 30);
@@ -179,48 +257,74 @@ applyBrandMode();
       ctx.fill();
 
       // head
-      ctx.fillStyle = '#f0c8a0';
-      ctx.beginPath();
-      ctx.arc(23, -2, 16, 0, Math.PI * 2);
-      ctx.fill();
-
-      // hair
-      ctx.fillStyle = '#5b4636';
-      ctx.beginPath();
-      ctx.arc(23, -8, 16, Math.PI, 0);
-      ctx.fill();
-
-      // glasses
-      ctx.strokeStyle = '#1a1a2e';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(10, -4, 12, 8);
-      ctx.strokeRect(24, -4, 12, 8);
-      ctx.beginPath();
-      ctx.moveTo(22, 0);
-      ctx.lineTo(24, 0);
-      ctx.stroke();
+      if (faceReady) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(23, -2, 17, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(face, 23 - 17, -2 - 17, 34, 34);
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(23, -2, 17, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#f0c8a0';
+        ctx.beginPath();
+        ctx.arc(23, -2, 16, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       ctx.restore();
     }
 
     function drawObstacle(o) {
-      ctx.fillStyle = '#d9455f';
-      ctx.fillRect(o.x, o.y - o.h, o.w, o.h);
+      // a leaning stack of tax forms
+      const sheets = 3;
+      for (let i = 0; i < sheets; i++) {
+        const sy = o.y - o.h + i * (o.h / sheets) * 0.55;
+        const sh = o.h / sheets * 0.7 + 6;
+        ctx.fillStyle = i === sheets - 1 ? '#fdfdf5' : '#f2efe3';
+        ctx.fillRect(o.x - i * 1.5, sy, o.w, sh);
+        ctx.strokeStyle = '#c9c2ad';
+        ctx.strokeRect(o.x - i * 1.5, sy, o.w, sh);
+      }
+      ctx.fillStyle = '#a8232f';
+      ctx.fillRect(o.x, o.y - o.h, o.w, 10);
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 11px Segoe UI';
+      ctx.font = 'bold 8px Segoe UI';
       ctx.textAlign = 'center';
-      ctx.fillText(o.label, o.x + o.w / 2, o.y - o.h / 2 + 4);
+      ctx.fillText('TAX FORM', o.x + o.w / 2, o.y - o.h + 8);
+      ctx.strokeStyle = '#9a927c';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(o.x + 5, o.y - o.h + 18 + i * 6);
+        ctx.lineTo(o.x + o.w - 5, o.y - o.h + 18 + i * 6);
+        ctx.stroke();
+      }
     }
 
     function drawCoin(c) {
-      ctx.fillStyle = '#ffd23f';
+      // a green "tax cut approved" stamp
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(-0.15);
+      ctx.strokeStyle = '#1f7a3d';
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+      ctx.arc(0, 0, c.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(31, 122, 61, 0.12)';
       ctx.fill();
-      ctx.fillStyle = '#8a6a00';
-      ctx.font = 'bold 14px Segoe UI';
+      ctx.fillStyle = '#1f7a3d';
+      ctx.font = 'bold 8px Segoe UI';
       ctx.textAlign = 'center';
-      ctx.fillText('$', c.x, c.y + 5);
+      ctx.fillText('TAX', 0, -2);
+      ctx.fillText('CUT', 0, 8);
+      ctx.restore();
     }
 
     function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -266,24 +370,13 @@ applyBrandMode();
       }
     }
 
-    function drawBackground() {
-      ctx.fillStyle = '#1c3a75';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(255,255,255,0.05)';
-      for (let i = 0; i < 5; i++) {
-        const bx = ((i * 220) - (frame * 1.2) % 1100 + canvas.width) % (canvas.width + 220) - 110;
-        ctx.fillRect(bx, 40 + (i % 3) * 30, 90, 140);
-      }
-    }
-
     function draw() {
-      drawBackground();
-      drawGround();
+      drawOffice();
       obstacles.forEach(drawObstacle);
       coins.forEach(drawCoin);
       drawPlayer();
 
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = '#26313f';
       ctx.textAlign = 'left';
       ctx.font = 'bold 18px Segoe UI';
       ctx.fillText('Score: ' + Math.floor(score), 16, 28);
@@ -291,21 +384,21 @@ applyBrandMode();
       ctx.fillText('Best: ' + best, canvas.width - 16, 28);
 
       if (state === 'ready') {
-        overlay('Angus Taylor: Fighting Taxes', 'Press Space or tap to start dodging tax hikes');
+        overlay('Angus Taylor: Fighting Taxes', 'Press Space or tap to start - dodge the paperwork, stamp the tax cuts');
       } else if (state === 'over') {
-        overlay('Audited! Score: ' + Math.floor(score), 'Press Space or tap to try again');
+        overlay('Buried in Paperwork! Score: ' + Math.floor(score), 'Press Space or tap to try again');
       }
     }
 
     function overlay(title, sub) {
-      ctx.fillStyle = 'rgba(10, 20, 50, 0.65)';
+      ctx.fillStyle = 'rgba(20, 24, 32, 0.6)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
-      ctx.font = 'bold 30px Segoe UI';
+      ctx.font = 'bold 28px Segoe UI';
       ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 10);
-      ctx.font = '16px Segoe UI';
-      ctx.fillStyle = '#cfd8ea';
+      ctx.font = '15px Segoe UI';
+      ctx.fillStyle = '#dbe2ea';
       ctx.fillText(sub, canvas.width / 2, canvas.height / 2 + 22);
     }
 
