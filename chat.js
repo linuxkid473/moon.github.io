@@ -32,6 +32,7 @@ const ICON_CHAT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_CLOSE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
 const ICON_GIF = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><text x="12" y="15" font-size="8" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">GIF</text></svg>`;
 const ICON_SEND = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+const ICON_FILTER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>`;
 
 const fab = document.createElement("button");
 fab.className = "chat-fab";
@@ -59,7 +60,15 @@ panel.innerHTML = `
       <span>Live &middot; everyone playing right now</span>
     </div>
     <div class="spacer"></div>
+    <button class="icon-btn" id="chatFilterBtn" aria-label="Toggle swear word filter" aria-pressed="false" title="Filter swear words">${ICON_FILTER}</button>
     <button class="icon-btn" id="chatCloseBtn" aria-label="Close chat">${ICON_CLOSE}</button>
+  </div>
+  <div class="chat-filter-prompt" id="chatFilterPrompt" hidden>
+    <p>Filter swear words in chat?</p>
+    <div class="chat-filter-prompt-actions">
+      <button class="pill-btn" id="chatFilterNo">No thanks</button>
+      <button class="pill-btn primary" id="chatFilterYes">Yes, filter it</button>
+    </div>
   </div>
   <div class="chat-messages" id="chatMessages">
     <div class="chat-empty" id="chatEmpty">No messages yet &mdash; say hi 👋</div>
@@ -103,7 +112,50 @@ const els = {
   gifSearch: document.getElementById("chatGifSearch"),
   gifGrid: document.getElementById("chatGifGrid"),
   gifCloseBtn: document.getElementById("chatGifCloseBtn"),
+  filterBtn: document.getElementById("chatFilterBtn"),
+  filterPrompt: document.getElementById("chatFilterPrompt"),
+  filterYesBtn: document.getElementById("chatFilterYes"),
+  filterNoBtn: document.getElementById("chatFilterNo"),
 };
+
+/* ---------------- Profanity filter (client-side only, opt-in) ---------------- */
+const PROFANITY_STORAGE_KEY = "chatProfanityFilter"; // "on" | "off"
+const PROFANITY_WORDS = [
+  "fuck","shit","bitch","asshole","bastard","cunt","dick","piss","pussy",
+  "slut","whore","fag","faggot","nigger","nigga","retard","cock","twat",
+  "damn","crap"
+];
+const PROFANITY_RE = new RegExp("\\b(?:" + PROFANITY_WORDS.join("|") + ")\\w*", "gi");
+function censorText(text){
+  return text.replace(PROFANITY_RE, (match) => match[0] + "*".repeat(Math.max(match.length - 1, 1)));
+}
+function isProfanityFilterOn(){
+  return localStorage.getItem(PROFANITY_STORAGE_KEY) === "on";
+}
+function setProfanityFilter(on){
+  localStorage.setItem(PROFANITY_STORAGE_KEY, on ? "on" : "off");
+  els.filterBtn.classList.toggle("active", on);
+  els.filterBtn.setAttribute("aria-pressed", String(on));
+  // Re-apply to already-rendered text bubbles without re-fetching anything.
+  els.messages.querySelectorAll(".chat-bubble[data-raw-text]").forEach(bubble => {
+    const raw = bubble.dataset.rawText;
+    bubble.textContent = on ? censorText(raw) : raw;
+  });
+}
+function openFilterPrompt(){
+  els.filterPrompt.hidden = false;
+}
+function closeFilterPrompt(){
+  els.filterPrompt.hidden = true;
+}
+const hadStoredProfanityPref = localStorage.getItem(PROFANITY_STORAGE_KEY) !== null;
+els.filterBtn.addEventListener("click", () => setProfanityFilter(!isProfanityFilterOn()));
+els.filterYesBtn.addEventListener("click", () => { setProfanityFilter(true); closeFilterPrompt(); });
+els.filterNoBtn.addEventListener("click", () => { setProfanityFilter(false); closeFilterPrompt(); });
+// Sync the button's visual state without writing a default — writing here
+// would make the "have we ever asked?" check below always false.
+els.filterBtn.classList.toggle("active", isProfanityFilterOn());
+els.filterBtn.setAttribute("aria-pressed", String(isProfanityFilterOn()));
 
 /* ---------------- State ---------------- */
 let isOpen = false;
@@ -144,6 +196,7 @@ function setOpen(open){
     setTimeout(() => els.input.focus(), 200);
     els.messages.scrollTop = els.messages.scrollHeight;
     els.panel.addEventListener("keydown", trapFocus);
+    if (!hadStoredProfanityPref && localStorage.getItem(PROFANITY_STORAGE_KEY) === null) openFilterPrompt();
   } else {
     closeGifPicker();
     els.panel.removeEventListener("keydown", trapFocus);
@@ -243,7 +296,8 @@ function renderMessage(message){
     bubble.appendChild(img);
   } else {
     bubble.className = "chat-bubble";
-    bubble.textContent = text;
+    bubble.dataset.rawText = text;
+    bubble.textContent = isProfanityFilterOn() ? censorText(text) : text;
   }
 
   col.appendChild(meta);

@@ -706,6 +706,23 @@ button{ font: inherit; color: inherit; }
 .chat-header h3{ font-size: 15px; margin: 0; }
 .chat-header span{ font-size: 12px; color: var(--text-tertiary); }
 .chat-header .spacer{ flex: 1; }
+#chatFilterBtn.active{ color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+.chat-filter-prompt[hidden]{ display: none; }
+.chat-filter-prompt{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.chat-filter-prompt p{ font-size: 13px; margin: 0; }
+.chat-filter-prompt-actions{ display: flex; gap: var(--s-2); flex: none; }
+.chat-filter-prompt .pill-btn{ padding: 6px 12px; font-size: 12px; }
 
 .chat-messages{
   flex: 1;
