@@ -201,21 +201,33 @@
     if (target.requestFullscreen) target.requestFullscreen();
   });
   downloadBtn?.addEventListener("click", async () => {
-    if (!currentHref) return;
+    if (!currentHref || downloadBtn.disabled) return;
+    const slug = (currentTitle || "game").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "game";
+    downloadBtn.disabled = true;
+    const originalLabel = downloadBtn.getAttribute("aria-label");
     try {
-      const res = await fetch(currentHref);
-      const blob = await res.blob();
+      const absoluteHref = new URL(currentHref, location.href).href;
+      const { blob, succeeded, failures } = await window.GameDownloader.buildZip(absoluteHref, {
+        onProgress: (msg) => { downloadBtn.setAttribute("aria-label", msg); toast(msg); },
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${(currentTitle || "game").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "game"}.html`;
+      a.download = `${slug}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast("Downloaded — open the file locally to play offline.");
+      toast(
+        failures.length
+          ? `Downloaded ${succeeded.length} file(s) — ${failures.length} blocked by the host, see MANIFEST.txt.`
+          : `Downloaded ${succeeded.length} file(s) for offline play.`
+      );
     } catch {
       toast("Couldn't download this game.");
+    } finally {
+      downloadBtn.disabled = false;
+      downloadBtn.setAttribute("aria-label", originalLabel || "Download game");
     }
   });
 
