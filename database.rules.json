@@ -1,0 +1,60 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "players": {
+      ".read": true,
+      ".indexOn": ["username"],
+      "$playerId": { ".write": true }
+    },
+    "presence": { ".read": true, "$id": { ".write": true } },
+    "stats": { ".read": true, ".write": true },
+    "rooms": { ".read": true, ".write": true },
+    "comments": { ".read": true, ".write": true },
+
+    "dmMeta": {
+      "$conversationId": {
+        ".read": "auth != null && $conversationId.contains(auth.uid)",
+        ".write": "auth != null && $conversationId.contains(auth.uid)",
+        "participants": {
+          ".validate": "newData.hasChild(auth.uid) && newData.child(auth.uid).val() === true"
+        }
+      }
+    },
+
+    "dmMessages": {
+      "$conversationId": {
+        ".read": "auth != null && $conversationId.contains(auth.uid)",
+        ".indexOn": ["timestamp"],
+        "$messageId": {
+          ".write": "auth != null && $conversationId.contains(auth.uid) && !data.exists()",
+          ".validate": "newData.child('senderId').val() === auth.uid && newData.hasChild('timestamp') && (newData.hasChild('text') || newData.hasChild('gifUrl')) && (!newData.hasChild('text') || (newData.child('text').isString() && newData.child('text').val().length <= 2000))"
+        }
+      }
+    },
+
+    "dmInbox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$conversationId": {
+          ".read": "auth != null && $conversationId.contains(auth.uid) && $conversationId.contains($uid)",
+          ".write": "auth != null && $conversationId.contains(auth.uid) && $conversationId.contains($uid)",
+          "otherUid": { ".validate": "newData.isString()" },
+          "otherUsername": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "otherAvatarEmoji": { ".validate": "newData.isString()" },
+          "otherAvatarColor": { ".validate": "newData.isString()" },
+          "unreadCount": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "updatedAt": { ".validate": true },
+          "lastMessage": {
+            "text": { ".validate": "newData.isString() && newData.val().length <= 2000" },
+            "gifUrl": { ".validate": "newData.isString()" },
+            "senderId": { ".validate": "newData.isString()" },
+            "timestamp": { ".validate": true }
+          },
+          "$other": { ".validate": false }
+        }
+      }
+    }
+  }
+}

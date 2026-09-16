@@ -111,6 +111,7 @@ function scheduleFlush(){
       username: identity.username,
       avatarEmoji: identity.avatarEmoji,
       avatarColor: identity.avatarColor,
+      hasAccount: identity.loggedIn,
       stats: {
         totalPlays: stats.totalPlays,
         distinctGamesPlayedCount: stats.distinctGamesPlayedCount,
