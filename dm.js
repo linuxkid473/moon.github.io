@@ -9,7 +9,7 @@
    Data-only module (no DOM), mirroring presence.js's separation of concerns:
    chat.js owns all rendering and calls these functions. */
 import { database } from "./firebase-init.js";
-import { getIdentity } from "./identity.js";
+import { getIdentity, isValidPhotoURL } from "./identity.js";
 import {
   ref, push, update, get, set, remove, onDisconnect, onChildAdded, onChildRemoved, onValue, runTransaction,
   query, orderByChild, orderByKey, equalTo, endBefore, startAfter, limitToLast, serverTimestamp
@@ -35,7 +35,8 @@ export async function getAccountProfile(uid){
     uid,
     username: typeof v.username === "string" ? v.username : "Unknown",
     avatarEmoji: v.avatarEmoji,
-    avatarColor: v.avatarColor
+    avatarColor: v.avatarColor,
+    photoURL: isValidPhotoURL(v.photoURL) ? v.photoURL : null
   };
 }
 
@@ -53,7 +54,8 @@ export async function searchAccountByUsername(username){
         uid: child.key,
         username: typeof v.username === "string" ? v.username : "Unknown",
         avatarEmoji: v.avatarEmoji,
-        avatarColor: v.avatarColor
+        avatarColor: v.avatarColor,
+        photoURL: isValidPhotoURL(v.photoURL) ? v.photoURL : null
       });
     }
   });

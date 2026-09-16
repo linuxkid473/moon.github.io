@@ -1,7 +1,7 @@
 /* Live presence: "who's online" backed by Firebase RTDB onDisconnect().
    Imported by chat.js only — it's the one place presence surfaces in the UI. */
 import { database } from "./firebase-init.js";
-import { getIdentity, onIdentityChange } from "./identity.js";
+import { getIdentity, onIdentityChange, isValidPhotoURL } from "./identity.js";
 import {
   ref, set, update, remove, onValue, onDisconnect, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
@@ -22,6 +22,7 @@ function presenceSnapshot(){
     username: identity.username,
     avatarEmoji: identity.avatarEmoji,
     avatarColor: identity.avatarColor,
+    photoURL: isValidPhotoURL(identity.photoURL) ? identity.photoURL : null,
     lastSeen: serverTimestamp()
   };
 }
@@ -63,7 +64,8 @@ export function startPresence(){
           id,
           username: typeof entry.username === "string" ? entry.username.slice(0, 40) : "Anonymous",
           avatarEmoji: typeof entry.avatarEmoji === "string" ? entry.avatarEmoji : "🙂",
-          avatarColor: typeof entry.avatarColor === "string" ? entry.avatarColor : "#5e5ce6"
+          avatarColor: typeof entry.avatarColor === "string" ? entry.avatarColor : "#5e5ce6",
+          photoURL: isValidPhotoURL(entry.photoURL) ? entry.photoURL : null
         });
       }
     }

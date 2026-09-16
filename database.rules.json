@@ -6,7 +6,10 @@
     "players": {
       ".read": true,
       ".indexOn": ["username"],
-      "$playerId": { ".write": true }
+      "$playerId": {
+        ".write": true,
+        "photoURL": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 60000)" }
+      }
     },
     "presence": { ".read": true, "$id": { ".write": true } },
     "stats": { ".read": true, ".write": true },

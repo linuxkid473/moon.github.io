@@ -17,6 +17,17 @@ const PLAY_COOLDOWN_MS = 5 * 60 * 1000;
 export const AVATAR_EMOJIS = ["🐙","🦊","🐻","🐼","🦁","🐯","🐸","🐵","🦄","🐲","🐢","🦉","🐺","🐰","🦖","🐨"];
 export const AVATAR_COLORS = ["#ff6b6b","#f7b731","#20bf6b","#0fb9b1","#2d98da","#8854d0","#eb3b5a","#fa8231"];
 
+// A custom profile photo is stored as a small base64 data: URL, directly on
+// the identity/players record — no Firebase Storage bucket is set up for
+// this project, and a tiny (64x64, compressed) image is cheap enough to
+// keep inline. Validated strictly wherever it's rendered since players/<id>
+// is a publicly-writable, fully untrusted record like everything else here.
+export const PHOTO_URL_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+export const MAX_PHOTO_URL_LEN = 60000;
+export function isValidPhotoURL(value){
+  return typeof value === "string" && value.length <= MAX_PHOTO_URL_LEN && PHOTO_URL_RE.test(value);
+}
+
 function randomId(){
   if (window.crypto?.randomUUID) return "id-" + window.crypto.randomUUID();
   return "id-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
@@ -69,6 +80,7 @@ function freshGuestIdentity(){
     username: "",
     avatarEmoji: AVATAR_EMOJIS[Math.floor(Math.random() * AVATAR_EMOJIS.length)],
     avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+    photoURL: null,
     createdAt: Date.now(),
     loggedIn: false
   };
@@ -82,6 +94,7 @@ if (!identity || typeof identity.id !== "string"){
   saveJSON(IDENTITY_KEY, identity);
 }
 if (typeof identity.loggedIn !== "boolean") identity.loggedIn = false;
+if (typeof identity.photoURL !== "string") identity.photoURL = null;
 
 let stats = loadJSON(STATS_KEY, null);
 if (!stats || typeof stats !== "object"){
@@ -111,6 +124,7 @@ function scheduleFlush(){
       username: identity.username,
       avatarEmoji: identity.avatarEmoji,
       avatarColor: identity.avatarColor,
+      photoURL: isValidPhotoURL(identity.photoURL) ? identity.photoURL : null,
       hasAccount: identity.loggedIn,
       stats: {
         totalPlays: stats.totalPlays,
@@ -141,6 +155,32 @@ export function setUsername(name){
 export function setAvatar(emoji, color){
   if (AVATAR_EMOJIS.includes(emoji)) identity.avatarEmoji = emoji;
   if (AVATAR_COLORS.includes(color)) identity.avatarColor = color;
+  // Picking an emoji/color is choosing "emoji mode" — a photo and the
+  // emoji+color combo are mutually exclusive display states, so setting
+  // one clears the other rather than leaving a hidden, unused photo behind.
+  identity.photoURL = null;
+  persistIdentity();
+  return getIdentity();
+}
+
+// dataUrl must already be a small, compressed, square image — profile.js's
+// upload flow produces one via canvas before calling this; nothing here
+// resizes or compresses on its own.
+// Account-gated, like DMs — a custom photo only makes sense tied to an
+// account (a guest's local id resets on every device/clear, so an uploaded
+// photo would just be silently orphaned). profile.js is responsible for
+// hiding the upload UI for guests; this is the defense-in-depth check for
+// anything that might call setPhoto() directly.
+export function setPhoto(dataUrl){
+  if (!identity.loggedIn) return getIdentity();
+  if (!isValidPhotoURL(dataUrl)) return getIdentity();
+  identity.photoURL = dataUrl;
+  persistIdentity();
+  return getIdentity();
+}
+
+export function clearPhoto(){
+  identity.photoURL = null;
   persistIdentity();
   return getIdentity();
 }
@@ -307,6 +347,7 @@ onAuthChange(async (user) => {
         username: typeof server.username === "string" ? server.username : identity.username,
         avatarEmoji: AVATAR_EMOJIS.includes(server.avatarEmoji) ? server.avatarEmoji : identity.avatarEmoji,
         avatarColor: AVATAR_COLORS.includes(server.avatarColor) ? server.avatarColor : identity.avatarColor,
+        photoURL: isValidPhotoURL(server.photoURL) ? server.photoURL : null,
         createdAt: identity.createdAt,
         loggedIn: true
       };
@@ -359,7 +400,7 @@ export function onAuthReady(cb){
 }
 
 export const MoonIdentity = {
-  getIdentity, setUsername, setAvatar, onIdentityChange,
+  getIdentity, setUsername, setAvatar, setPhoto, clearPhoto, onIdentityChange,
   getStats, onStatsChange,
   recordGamePlay, recordChatMessage, recordComment, recordTicTacToeResult, recordVisit,
   getUnlockedAchievements, getAllAchievements,

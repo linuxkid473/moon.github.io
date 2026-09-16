@@ -14,7 +14,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import {
   getIdentity, onIdentityChange, setUsername, recordChatMessage,
-  isLoggedIn, onAuthReady,
+  isLoggedIn, onAuthReady, isValidPhotoURL,
   AVATAR_EMOJIS, AVATAR_COLORS
 } from "./identity.js";
 import { startPresence, subscribeOnlineUsers } from "./presence.js";
@@ -46,6 +46,41 @@ function colorFor(name){
 }
 function initials(name){
   return (name || "?").trim().slice(0, 2).toUpperCase();
+}
+// Shared by every avatar rendered anywhere in the chat widget (bubbles,
+// online list, DM sidebar/search, the user card) — photoURL always wins
+// when present and valid, otherwise falls back to the emoji+color combo.
+// Uses el.src (never innerHTML) so an untrusted photoURL can't inject markup.
+function paintAvatar(el, { photoURL, avatarEmoji, avatarColor, username }){
+  el.innerHTML = "";
+  if (isValidPhotoURL(photoURL)){
+    el.style.background = "none";
+    const img = document.createElement("img");
+    img.src = photoURL;
+    img.alt = "";
+    img.referrerPolicy = "no-referrer";
+    el.appendChild(img);
+  } else if (AVATAR_EMOJIS.includes(avatarEmoji)){
+    el.style.background = avatarColor && AVATAR_COLORS.includes(avatarColor) ? avatarColor : colorFor(username || "");
+    el.textContent = avatarEmoji;
+  } else {
+    el.style.background = colorFor(username || "");
+    el.textContent = initials(username);
+  }
+}
+
+// Session-lived cache so re-rendering the DM sidebar (fires on every inbox
+// change) doesn't re-fetch every other party's profile each time — a photo
+// someone sets mid-session won't be picked up here until next page load,
+// which is an acceptable tradeoff for how rarely that happens.
+const avatarPhotoCache = {};
+async function resolveAvatarPhoto(uid){
+  if (!uid) return null;
+  if (uid in avatarPhotoCache) return avatarPhotoCache[uid];
+  const profile = await getAccountProfile(uid).catch(() => null);
+  const photoURL = profile?.photoURL || null;
+  avatarPhotoCache[uid] = photoURL;
+  return photoURL;
 }
 /* ---------------- Build DOM ---------------- */
 const ICON_CHAT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
@@ -254,18 +289,22 @@ subscribeOnlineUsers(users => {
   if (activeConv === "community"){
     els.liveCount.textContent = n === 1 ? "1 person online now" : `${n} people online now`;
   }
-  els.onlineList.innerHTML = users.map(u => `
-    <div class="chat-online-row">
-      <span class="profile-avatar" style="background:${AVATAR_COLORS.includes(u.avatarColor) ? u.avatarColor : "#5e5ce6"}">${AVATAR_EMOJIS.includes(u.avatarEmoji) ? u.avatarEmoji : "🙂"}</span>
-      <span class="chat-clickable-name"></span>
-    </div>`).join("");
-  // Set the username text nodes via textContent (never innerHTML) since it's untrusted.
-  [...els.onlineList.querySelectorAll(".chat-clickable-name")].forEach((el, i) => {
-    el.textContent = users[i].username;
-    el.addEventListener("click", (e) => {
+  els.onlineList.innerHTML = "";
+  users.forEach(u => {
+    const row = document.createElement("div");
+    row.className = "chat-online-row";
+    const avatar = document.createElement("span");
+    avatar.className = "profile-avatar";
+    paintAvatar(avatar, { photoURL: u.photoURL, avatarEmoji: u.avatarEmoji, avatarColor: u.avatarColor, username: u.username });
+    const nameEl = document.createElement("span");
+    nameEl.className = "chat-clickable-name";
+    nameEl.textContent = u.username; // textContent only — never innerHTML — since it's untrusted
+    nameEl.addEventListener("click", (e) => {
       e.stopPropagation();
-      openUserCard(el, users[i].id, users[i].username);
+      openUserCard(nameEl, u.id, u.username);
     });
+    row.append(avatar, nameEl);
+    els.onlineList.appendChild(row);
   });
 });
 
@@ -391,7 +430,7 @@ function safeString(value, maxLen){
   return value.slice(0, maxLen);
 }
 
-function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, identityId, key, onDelete, prepend }){
+function appendBubble({ username, avatarEmoji, avatarColor, photoURL, text, gifUrl, timestamp, isOwn, identityId, key, onDelete, prepend }){
   els.empty?.remove();
 
   const time = timestamp
@@ -404,14 +443,8 @@ function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timest
 
   const avatar = document.createElement("div");
   avatar.className = "chat-avatar";
-  if (avatarEmoji){
-    avatar.style.background = avatarColor || colorFor(username);
-    avatar.style.fontSize = "14px";
-    avatar.textContent = avatarEmoji;
-  } else {
-    avatar.style.background = colorFor(username);
-    avatar.textContent = initials(username);
-  }
+  avatar.style.fontSize = (isValidPhotoURL(photoURL) || AVATAR_EMOJIS.includes(avatarEmoji)) ? "14px" : "";
+  paintAvatar(avatar, { photoURL, avatarEmoji, avatarColor, username });
 
   const col = document.createElement("div");
   col.className = "chat-bubble-col";
@@ -498,6 +531,7 @@ function renderMessage(message, prepend){
   const timestamp = typeof message.timestamp === "number" ? message.timestamp : null;
   const avatarEmoji = AVATAR_EMOJIS.includes(message.avatarEmoji) ? message.avatarEmoji : null;
   const avatarColor = AVATAR_COLORS.includes(message.avatarColor) ? message.avatarColor : null;
+  const photoURL = isValidPhotoURL(message.photoURL) ? message.photoURL : null;
   const identityId = typeof message.identityId === "string" ? message.identityId.slice(0, 60) : null;
 
   const isOwn = identityId
@@ -505,7 +539,7 @@ function renderMessage(message, prepend){
     : username === (els.username.value || "Anonymous").trim() && username !== "Anonymous";
 
   appendBubble({
-    username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, identityId, key, prepend,
+    username, avatarEmoji, avatarColor, photoURL, text, gifUrl, timestamp, isOwn, identityId, key, prepend,
     onDelete: isOwn && key ? () => deleteCommunityMessage(key) : null
   });
 }
@@ -522,8 +556,9 @@ function renderDmMessage(message, otherProfile, conversationId, prepend){
   const username = isOwn ? (me.username || "You") : (otherProfile?.username || "Unknown");
   const avatarEmoji = isOwn ? me.avatarEmoji : otherProfile?.avatarEmoji;
   const avatarColor = isOwn ? me.avatarColor : otherProfile?.avatarColor;
+  const photoURL = isOwn ? me.photoURL : otherProfile?.photoURL;
   appendBubble({
-    username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, key, prepend,
+    username, avatarEmoji, avatarColor, photoURL, text, gifUrl, timestamp, isOwn, key, prepend,
     onDelete: isOwn && key ? () => deleteDirectMessage(conversationId, key) : null
   });
 }
@@ -685,8 +720,15 @@ async function switchToDm(conversationId, profile){
   setActiveSidebarItem();
   setConversationOpen(true);
 
-  const recent = await fetchRecentMessages(conversationId).catch(() => []);
+  // Refetched live (not just trusted from the cached inbox/search-result
+  // fields) so a photo (or emoji/color) the other person set after this
+  // conversation was created still shows correctly.
+  const [recent, freshProfile] = await Promise.all([
+    fetchRecentMessages(conversationId).catch(() => []),
+    getAccountProfile(profile.uid).catch(() => null)
+  ]);
   if (activeConv !== conversationId) return; // switched to something else while this loaded
+  if (freshProfile) profile = activeDmProfile = { ...profile, ...freshProfile };
   recent.forEach(entry => renderDmMessage(entry, profile, conversationId));
   dmOldestKey = recent.length ? recent[0].key : null;
   dmNoMoreHistory = recent.length < 20;
@@ -750,8 +792,10 @@ function renderDmSidebarList(){
 
     const avatar = document.createElement("span");
     avatar.className = "profile-avatar";
-    avatar.style.background = AVATAR_COLORS.includes(entry.otherAvatarColor) ? entry.otherAvatarColor : "#5e5ce6";
-    avatar.textContent = AVATAR_EMOJIS.includes(entry.otherAvatarEmoji) ? entry.otherAvatarEmoji : "🙂";
+    paintAvatar(avatar, { avatarEmoji: entry.otherAvatarEmoji, avatarColor: entry.otherAvatarColor, username: entry.otherUsername });
+    resolveAvatarPhoto(entry.otherUid).then(photoURL => {
+      if (photoURL) paintAvatar(avatar, { photoURL, avatarEmoji: entry.otherAvatarEmoji, avatarColor: entry.otherAvatarColor, username: entry.otherUsername });
+    });
 
     const col = document.createElement("span");
     col.className = "chat-sidebar-item-col";
@@ -869,8 +913,7 @@ function renderDmSearchResults(results){
     row.className = "chat-dm-search-row";
     const avatar = document.createElement("span");
     avatar.className = "profile-avatar";
-    avatar.style.background = AVATAR_COLORS.includes(r.avatarColor) ? r.avatarColor : "#5e5ce6";
-    avatar.textContent = AVATAR_EMOJIS.includes(r.avatarEmoji) ? r.avatarEmoji : "🙂";
+    paintAvatar(avatar, { photoURL: r.photoURL, avatarEmoji: r.avatarEmoji, avatarColor: r.avatarColor, username: r.username });
     const name = document.createElement("span");
     name.textContent = safeString(r.username, MAX_NAME_LEN) || "Unknown";
     row.append(avatar, name);
@@ -928,8 +971,7 @@ async function openUserCard(anchorEl, identityId, fallbackUsername){
   const requestId = identityId + ":" + Date.now();
   userCardRequestId = requestId;
   els.userCardName.textContent = fallbackUsername || "…";
-  els.userCardAvatar.style.background = "#5e5ce6";
-  els.userCardAvatar.textContent = "🙂";
+  paintAvatar(els.userCardAvatar, { username: fallbackUsername });
   els.userCardMsgBtn.hidden = true;
   els.userCardMsgBtn.onclick = null;
   els.userCardNote.hidden = false;
@@ -945,8 +987,7 @@ async function openUserCard(anchorEl, identityId, fallbackUsername){
     return;
   }
   els.userCardName.textContent = profile.username;
-  els.userCardAvatar.style.background = AVATAR_COLORS.includes(profile.avatarColor) ? profile.avatarColor : "#5e5ce6";
-  els.userCardAvatar.textContent = AVATAR_EMOJIS.includes(profile.avatarEmoji) ? profile.avatarEmoji : "🙂";
+  paintAvatar(els.userCardAvatar, { photoURL: profile.photoURL, avatarEmoji: profile.avatarEmoji, avatarColor: profile.avatarColor, username: profile.username });
 
   if (profile.uid === getIdentity().id){
     els.userCardNote.textContent = "That's you.";
@@ -980,7 +1021,12 @@ document.addEventListener("keydown", (e) => {
 /* ---------------- Sending ---------------- */
 function identityFields(){
   const identity = getIdentity();
-  return { identityId: identity.id, avatarEmoji: identity.avatarEmoji, avatarColor: identity.avatarColor };
+  const fields = { identityId: identity.id, avatarEmoji: identity.avatarEmoji, avatarColor: identity.avatarColor };
+  // Embedded per-message (like avatarEmoji/avatarColor already are) rather
+  // than looked up live, so it stays small: photos are pre-compressed to a
+  // tiny data URL in profile.js before ever reaching identity.photoURL.
+  if (isValidPhotoURL(identity.photoURL)) fields.photoURL = identity.photoURL;
+  return fields;
 }
 function sendMessage(){
   const text = els.input.value.trim();

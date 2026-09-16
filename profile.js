@@ -1,7 +1,7 @@
 /* Profile popover: view/edit the local identity (username + avatar) and see
    your own stats. Injected off #profileBtn, present on every page. */
 import {
-  getIdentity, setUsername, setAvatar, onIdentityChange,
+  getIdentity, setUsername, setAvatar, setPhoto, clearPhoto, onIdentityChange,
   getStats, onStatsChange, AVATAR_EMOJIS, AVATAR_COLORS
 } from "./identity.js";
 import { signUp, logIn, logOut } from "./auth.js";
@@ -22,6 +22,13 @@ if (btn){
     </div>
     <div class="profile-section">
       <div class="profile-label">Avatar</div>
+      <div class="profile-photo-row" id="profilePhotoRow">
+        <input type="file" id="profilePhotoInput" accept="image/*" hidden>
+        <button class="pill-btn" id="profilePhotoUploadBtn" type="button">Upload photo</button>
+        <button class="pill-btn" id="profilePhotoRemoveBtn" type="button" hidden>Remove photo</button>
+      </div>
+      <p class="profile-photo-guest-note" id="profilePhotoGuestNote" hidden>Sign in to add a custom photo.</p>
+      <p class="profile-photo-msg" id="profilePhotoMsg" hidden></p>
       <div class="profile-emoji-grid" id="profileEmojiGrid"></div>
       <div class="profile-color-row" id="profileColorRow"></div>
     </div>
@@ -68,6 +75,12 @@ if (btn){
     signupBtn: document.getElementById("profileSignupBtn"),
     authMsg: document.getElementById("profileAuthMsg"),
     logoutBtn: document.getElementById("profileLogoutBtn"),
+    photoRow: document.getElementById("profilePhotoRow"),
+    photoInput: document.getElementById("profilePhotoInput"),
+    photoUploadBtn: document.getElementById("profilePhotoUploadBtn"),
+    photoRemoveBtn: document.getElementById("profilePhotoRemoveBtn"),
+    photoGuestNote: document.getElementById("profilePhotoGuestNote"),
+    photoMsg: document.getElementById("profilePhotoMsg"),
   };
 
   els.emojiGrid.innerHTML = AVATAR_EMOJIS.map(e =>
@@ -77,13 +90,33 @@ if (btn){
     `<button type="button" class="profile-color-btn" data-color="${c}" style="background:${c}" aria-label="Choose color ${c}"></button>`
   ).join("");
 
+  // Same "photo wins, else emoji+color" rendering as chat.js's paintAvatar
+  // — duplicated rather than imported so this file doesn't have to pull in
+  // the whole chat widget just for one helper. img.src is set as a DOM
+  // property, never innerHTML, so an (already-validated) photoURL can't
+  // ever be interpreted as markup.
+  function paintAvatarEl(el, identity){
+    el.innerHTML = "";
+    if (identity.photoURL){
+      el.style.background = "none";
+      const img = document.createElement("img");
+      img.src = identity.photoURL;
+      img.alt = "";
+      el.appendChild(img);
+    } else {
+      el.style.background = identity.avatarColor;
+      el.textContent = identity.avatarEmoji;
+    }
+  }
   function renderAvatar(identity){
-    els.avatarPreview.textContent = identity.avatarEmoji;
-    els.avatarPreview.style.background = identity.avatarColor;
-    els.bigAvatar.textContent = identity.avatarEmoji;
-    els.bigAvatar.style.background = identity.avatarColor;
-    [...els.emojiGrid.children].forEach(b => b.classList.toggle("active", b.dataset.emoji === identity.avatarEmoji));
-    [...els.colorRow.children].forEach(b => b.classList.toggle("active", b.dataset.color === identity.avatarColor));
+    paintAvatarEl(els.avatarPreview, identity);
+    paintAvatarEl(els.bigAvatar, identity);
+    [...els.emojiGrid.children].forEach(b => b.classList.toggle("active", !identity.photoURL && b.dataset.emoji === identity.avatarEmoji));
+    [...els.colorRow.children].forEach(b => b.classList.toggle("active", !identity.photoURL && b.dataset.color === identity.avatarColor));
+    els.photoRemoveBtn.hidden = !identity.photoURL;
+    els.photoUploadBtn.textContent = identity.photoURL ? "Change photo" : "Upload photo";
+    els.photoRow.hidden = !identity.loggedIn;
+    els.photoGuestNote.hidden = identity.loggedIn;
   }
   function renderUsername(identity){
     if (document.activeElement !== els.username) els.username.value = identity.username;
@@ -149,6 +182,67 @@ if (btn){
   els.colorRow.addEventListener("click", e => {
     const b = e.target.closest(".profile-color-btn");
     if (b) setAvatar(getIdentity().avatarEmoji, b.dataset.color);
+  });
+
+  // No Firebase Storage bucket is set up for this project, so a photo is
+  // downscaled/cropped to a small square and compressed client-side into a
+  // data: URL small enough to store directly on the identity/players
+  // record (see identity.js's PHOTO_URL_RE / MAX_PHOTO_URL_LEN) instead of
+  // uploading a file anywhere.
+  const PHOTO_SIZE = 96;
+  const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+  function setPhotoMsg(text, isError){
+    els.photoMsg.textContent = text;
+    els.photoMsg.hidden = !text;
+    els.photoMsg.classList.toggle("error", !!isError);
+  }
+
+  function compressImageToDataURL(file){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const size = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - size) / 2;
+        const sy = (img.naturalHeight - size) / 2;
+        const canvas = document.createElement("canvas");
+        canvas.width = PHOTO_SIZE;
+        canvas.height = PHOTO_SIZE;
+        canvas.getContext("2d").drawImage(img, sx, sy, size, size, 0, 0, PHOTO_SIZE, PHOTO_SIZE);
+        resolve(canvas.toDataURL("image/jpeg", 0.75));
+      };
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Couldn't read that image.")); };
+      img.src = objectUrl;
+    });
+  }
+
+  els.photoUploadBtn.addEventListener("click", () => els.photoInput.click());
+  els.photoRemoveBtn.addEventListener("click", () => { clearPhoto(); setPhotoMsg(""); });
+  els.photoInput.addEventListener("change", async () => {
+    const file = els.photoInput.files?.[0];
+    els.photoInput.value = ""; // so picking the same file again still fires "change"
+    if (!file) return;
+    if (!file.type.startsWith("image/")){
+      setPhotoMsg("Please choose an image file.", true);
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES){
+      setPhotoMsg("That image is too large (8MB max).", true);
+      return;
+    }
+    setPhotoMsg("Uploading…");
+    els.photoUploadBtn.disabled = true;
+    try {
+      const dataUrl = await compressImageToDataURL(file);
+      setPhoto(dataUrl);
+      setPhotoMsg("");
+    } catch (err) {
+      setPhotoMsg(err.message || "Couldn't process that image.", true);
+    } finally {
+      els.photoUploadBtn.disabled = false;
+    }
   });
 
   let isOpen = false;
