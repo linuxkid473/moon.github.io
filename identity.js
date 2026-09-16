@@ -145,7 +145,13 @@ function persistStats(){ saveJSON(STATS_KEY, stats); notifyStats(); scheduleFlus
 /* ---------------- Public identity API ---------------- */
 export function getIdentity(){ return { ...identity }; }
 
+// Locked once logged in — an account's username is fixed to whatever it
+// signed up with (see onAuthChange below), so it stays the same identity
+// across chat, comments, and DMs with no way to change it mid-stream.
+// Guests can still freely rename themselves; this is only a no-op for
+// accounts.
 export function setUsername(name){
+  if (identity.loggedIn) return getIdentity();
   const clean = String(name || "").trim().slice(0, MAX_USERNAME_LEN);
   identity.username = clean || randomUsername();
   persistIdentity();
@@ -338,13 +344,21 @@ onAuthChange(async (user) => {
     return;
   }
 
+  // The username you log in with IS your display name everywhere (chat,
+  // comments, DMs) once you have an account — permanently, not just as a
+  // starting value. Derived fresh from the auth email on every login
+  // (rather than trusted from whatever's stored in players/<uid>.username)
+  // so it also self-heals any account whose stored name drifted from this
+  // before that was enforced.
+  const loginUsername = typeof user.email === "string" ? user.email.split("@")[0].slice(0, MAX_USERNAME_LEN) : "";
+
   try {
     const snap = await get(ref(database, "players/" + user.uid));
     const server = snap.val();
     if (server && server.stats){
       identity = {
         id: user.uid,
-        username: typeof server.username === "string" ? server.username : identity.username,
+        username: loginUsername || (typeof server.username === "string" ? server.username : identity.username),
         avatarEmoji: AVATAR_EMOJIS.includes(server.avatarEmoji) ? server.avatarEmoji : identity.avatarEmoji,
         avatarColor: AVATAR_COLORS.includes(server.avatarColor) ? server.avatarColor : identity.avatarColor,
         photoURL: isValidPhotoURL(server.photoURL) ? server.photoURL : null,
@@ -362,17 +376,11 @@ onAuthChange(async (user) => {
         streak: { ...stats.streak, ...(s.streak || {}) },
       };
     } else {
-      // Brand new account, never persisted anything yet — default the
-      // display name (the editable, searchable name used everywhere,
-      // including DM search) to the username they just signed up with,
-      // instead of leaving whatever random guest name ("PlayerNNNN") they
-      // happened to have. They can still rename it later from the profile
-      // popover; this only sets the starting value.
-      const loginUsername = typeof user.email === "string" ? user.email.split("@")[0] : "";
+      // Brand new account, never persisted anything yet.
       identity = {
         ...identity,
         id: user.uid,
-        username: loginUsername ? loginUsername.slice(0, MAX_USERNAME_LEN) : identity.username,
+        username: loginUsername || identity.username,
         loggedIn: true
       };
     }

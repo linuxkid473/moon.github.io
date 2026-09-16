@@ -120,6 +120,10 @@ if (btn){
   }
   function renderUsername(identity){
     if (document.activeElement !== els.username) els.username.value = identity.username;
+    // Locked once logged in — it's fixed to the username signed up with
+    // (see identity.js's setUsername/onAuthChange), not editable after.
+    els.username.readOnly = identity.loggedIn;
+    els.username.title = identity.loggedIn ? "Your username is set when you sign up and can't be changed." : "";
   }
   function renderAuthState(identity){
     els.loggedOutBox.hidden = !!identity.loggedIn;

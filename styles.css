@@ -1160,6 +1160,7 @@ body.chat-maximized .chat-fab{ opacity: 0; pointer-events: none; }
 .profile-popover.open{ transform: scale(1) translateY(0); opacity: 1; pointer-events: auto; }
 
 .profile-head{ display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-4); }
+.profile-head input:read-only{ opacity: .6; cursor: default; }
 .profile-head input{
   flex: 1; min-width: 0;
   padding: 9px 12px;

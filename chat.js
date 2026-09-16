@@ -680,6 +680,14 @@ function setConversationOpen(open){
   els.panel.classList.toggle("conversation-open", open);
 }
 
+// The "Your name" quick-rename field only makes sense for guests — once
+// logged in, the username is locked to whatever was used to sign up (see
+// identity.js's setUsername/onAuthChange), so the field is just hidden
+// rather than shown-but-inert.
+function updateUsernameRowVisibility(){
+  els.usernameRow.classList.toggle("chat-hide", activeConv !== "community" || isLoggedIn());
+}
+
 function switchToCommunity(){
   if (activeConv === "community"){ setConversationOpen(true); return; }
   detachActiveConversation();
@@ -687,7 +695,7 @@ function switchToCommunity(){
   activeDmProfile = null;
   els.title.textContent = "Moon Games Chat";
   els.online.classList.remove("chat-hide");
-  els.usernameRow.classList.remove("chat-hide");
+  updateUsernameRowVisibility();
   els.input.placeholder = "Message the community…";
   panel.setAttribute("aria-label", "Community chat");
   resetMessagesView("No messages yet — say hi 👋");
@@ -867,6 +875,7 @@ let lastGateState = null;
 function renderDmGate(loggedIn){
   els.dmGuestPrompt.classList.toggle("chat-hide", loggedIn);
   els.dmSection.classList.toggle("chat-hide", !loggedIn);
+  updateUsernameRowVisibility();
   if (loggedIn){
     attachDmInbox();
   } else {
