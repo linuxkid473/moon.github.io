@@ -881,6 +881,28 @@ body.chat-maximized .chat-fab{ opacity: 0; pointer-events: none; }
 .chat-clickable-name{ cursor: pointer; }
 .chat-clickable-name:hover{ text-decoration: underline; }
 
+.chat-msg-delete{
+  border: none; background: none; cursor: pointer; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity .15s var(--ease), color .15s var(--ease);
+}
+.chat-msg:hover .chat-msg-delete,
+.chat-msg-delete:focus-visible{ opacity: 1; }
+.chat-msg-delete:hover{ color: var(--danger); }
+.chat-msg-delete svg{ width: 12px; height: 12px; }
+
+.chat-messages.loading-older{ scroll-padding-top: 40px; }
+.chat-messages.loading-older::before{
+  content: "Loading earlier messages…";
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding-bottom: 8px;
+}
+
 .chat-user-card{
   position: fixed;
   z-index: 170;
@@ -1054,6 +1076,20 @@ body.chat-maximized .chat-fab{ opacity: 0; pointer-events: none; }
   font-size: 10.5px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
 }
+
+.chat-dm-remove{
+  flex: none;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: none; background: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+}
+.chat-dm-item:hover .chat-dm-remove,
+.chat-dm-remove:focus-visible{ opacity: 1; }
+.chat-dm-remove:hover{ background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+.chat-dm-remove svg{ width: 11px; height: 11px; }
 
 .chat-dm-section{ display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .chat-dm-list{ display: flex; flex-direction: column; overflow-y: auto; }

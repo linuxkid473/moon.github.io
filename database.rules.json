@@ -28,7 +28,7 @@
         ".read": "auth != null && $conversationId.contains(auth.uid)",
         ".indexOn": ["timestamp"],
         "$messageId": {
-          ".write": "auth != null && $conversationId.contains(auth.uid) && !data.exists()",
+          ".write": "auth != null && $conversationId.contains(auth.uid) && ((!data.exists() && newData.exists()) || (data.exists() && data.child('senderId').val() === auth.uid && !newData.exists()))",
           ".validate": "newData.child('senderId').val() === auth.uid && newData.hasChild('timestamp') && (newData.hasChild('text') || newData.hasChild('gifUrl')) && (!newData.hasChild('text') || (newData.child('text').isString() && newData.child('text').val().length <= 2000))"
         }
       }

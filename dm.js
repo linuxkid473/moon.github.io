@@ -11,9 +11,11 @@
 import { database } from "./firebase-init.js";
 import { getIdentity } from "./identity.js";
 import {
-  ref, push, update, get, set, remove, onDisconnect, onChildAdded, onValue, runTransaction,
-  query, orderByChild, equalTo, limitToLast, serverTimestamp
+  ref, push, update, get, set, remove, onDisconnect, onChildAdded, onChildRemoved, onValue, runTransaction,
+  query, orderByChild, orderByKey, equalTo, endBefore, startAfter, limitToLast, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+const PAGE_SIZE = 20;
 
 // A typing write is only trusted for up to this long — if onDisconnect
 // didn't fire in time (crash, network drop) a stale entry still clears
@@ -64,28 +66,41 @@ export async function openConversationWith(otherUid, otherProfile){
     throw new Error("Can't start that conversation.");
   }
   const conversationId = getConversationId(me.id, otherUid);
-  const existing = await get(ref(database, `dmMeta/${conversationId}`));
-  if (!existing.exists()){
-    const now = serverTimestamp();
-    const updates = {};
+  // Checked independently (not just dmMeta) so re-opening a conversation
+  // whose dmMeta/other-side survived but whose OWN inbox entry was removed
+  // (see removeConversation) correctly recreates just the missing piece,
+  // instead of silently doing nothing because dmMeta already existed.
+  const [metaSnap, myInboxSnap] = await Promise.all([
+    get(ref(database, `dmMeta/${conversationId}`)),
+    get(ref(database, `dmInbox/${me.id}/${conversationId}`))
+  ]);
+  const now = serverTimestamp();
+  const updates = {};
+  if (!metaSnap.exists()){
     updates[`dmMeta/${conversationId}`] = {
       participants: { [me.id]: true, [otherUid]: true },
       createdAt: now,
       updatedAt: now
     };
+  }
+  if (!myInboxSnap.exists()){
     updates[`dmInbox/${me.id}/${conversationId}`] = {
       otherUid, otherUsername: otherProfile.username,
       otherAvatarEmoji: otherProfile.avatarEmoji, otherAvatarColor: otherProfile.avatarColor,
       unreadCount: 0, updatedAt: now
     };
-    updates[`dmInbox/${otherUid}/${conversationId}`] = {
-      otherUid: me.id, otherUsername: me.username,
-      otherAvatarEmoji: me.avatarEmoji, otherAvatarColor: me.avatarColor,
-      unreadCount: 0, updatedAt: now
-    };
-    await update(ref(database), updates);
   }
+  if (Object.keys(updates).length) await update(ref(database), updates);
   return conversationId;
+}
+
+// "Delete" a conversation from just your own inbox — the other person keeps
+// theirs, and dmMessages/dmMeta are untouched, so messaging them again later
+// (openConversationWith) picks the same history back up.
+export function removeConversation(conversationId){
+  const me = getIdentity();
+  if (!me.loggedIn) return Promise.resolve();
+  return remove(ref(database, `dmInbox/${me.id}/${conversationId}`)).catch(() => {});
 }
 
 export async function sendDirectMessage(conversationId, otherUid, payload){
@@ -129,9 +144,49 @@ export function subscribeInbox(cb){
   });
 }
 
-export function subscribeConversationMessages(conversationId, cb){
-  const q = query(ref(database, `dmMessages/${conversationId}`), limitToLast(50));
-  return onChildAdded(q, snap => cb(snap.val()));
+// Pagination: fetch the most recent page once (not a live listener), then
+// separately attach a live "tail" (subscribeNewMessages) for anything from
+// here forward — mixing a live limitToLast() listener with manual "load
+// older" would fight itself, since limitToLast() emits onChildRemoved for
+// whatever falls out of its window as new messages arrive.
+export async function fetchRecentMessages(conversationId, limit = PAGE_SIZE){
+  const q = query(ref(database, `dmMessages/${conversationId}`), limitToLast(limit));
+  const snap = await get(q);
+  const messages = [];
+  snap.forEach(child => { messages.push({ key: child.key, ...child.val() }); });
+  return messages; // oldest -> newest
+}
+
+// One older page, ending right before `beforeKey` (exclusive).
+export async function fetchOlderMessages(conversationId, beforeKey, limit = PAGE_SIZE){
+  if (!beforeKey) return [];
+  const q = query(ref(database, `dmMessages/${conversationId}`), orderByKey(), endBefore(beforeKey), limitToLast(limit));
+  const snap = await get(q);
+  const messages = [];
+  snap.forEach(child => { messages.push({ key: child.key, ...child.val() }); });
+  return messages; // oldest -> newest
+}
+
+// Live tail: fires for every message added after `afterKey` (the newest key
+// already rendered) — unbounded, so unlike limitToLast() it never fires
+// onChildRemoved just because the window slid.
+export function subscribeNewMessages(conversationId, afterKey, cb){
+  const base = ref(database, `dmMessages/${conversationId}`);
+  const q = afterKey ? query(base, orderByKey(), startAfter(afterKey)) : query(base, orderByKey());
+  return onChildAdded(q, snap => cb({ key: snap.key, ...snap.val() }));
+}
+
+export function subscribeRemovedMessages(conversationId, cb){
+  return onChildRemoved(ref(database, `dmMessages/${conversationId}`), snap => cb(snap.key));
+}
+
+export function deleteDirectMessage(conversationId, messageId){
+  const me = getIdentity();
+  if (!me.loggedIn) return Promise.reject(new Error("Sign in required."));
+  // Not caught here — the caller (chat.js) only removes the bubble from
+  // the DOM once this actually resolves, so a rejected delete (denied by
+  // rules, network drop) doesn't make a message look gone when it isn't.
+  return remove(ref(database, `dmMessages/${conversationId}/${messageId}`));
 }
 
 export function setTyping(conversationId, isTyping){

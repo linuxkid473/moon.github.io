@@ -9,7 +9,7 @@
    stay live and be switched between, instead of being stuck in the corner. */
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getDatabase, ref, push, set, remove, onDisconnect, onChildAdded, onValue,
+  getDatabase, ref, push, set, remove, onDisconnect, onChildAdded, onChildRemoved, onValue,
   serverTimestamp, limitToLast, query
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import {
@@ -20,8 +20,10 @@ import {
 import { startPresence, subscribeOnlineUsers } from "./presence.js";
 import { censorText, isProfanityFilterOn, setProfanityFilterPref, hasStoredProfanityPref } from "./profanity.js";
 import {
-  getAccountProfile, searchAccountByUsername, openConversationWith, sendDirectMessage,
-  subscribeInbox, subscribeConversationMessages, markConversationRead,
+  getAccountProfile, searchAccountByUsername, openConversationWith, removeConversation,
+  sendDirectMessage, deleteDirectMessage,
+  fetchRecentMessages, fetchOlderMessages, subscribeNewMessages, subscribeRemovedMessages,
+  subscribeInbox, markConversationRead,
   setTyping, subscribeTyping
 } from "./dm.js";
 
@@ -54,6 +56,8 @@ const ICON_FILTER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const ICON_MAXIMIZE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>`;
 const ICON_MINIMIZE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>`;
 const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+const ICON_TRASH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+const ICON_X_SMALL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
 
 const fab = document.createElement("button");
 fab.className = "chat-fab";
@@ -225,7 +229,8 @@ let hasReceivedFirstBatch = false;
 let lastFocused = null;
 let activeConv = "community"; // "community" | a DM conversationId
 let activeDmProfile = null;
-let activeDmUnsub = null;
+let activeDmAddUnsub = null;
+let activeDmRemoveUnsub = null;
 let activeDmTypingUnsub = null;
 let communityTypingNames = [];
 let typingActive = false;
@@ -386,7 +391,7 @@ function safeString(value, maxLen){
   return value.slice(0, maxLen);
 }
 
-function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, identityId }){
+function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, identityId, key, onDelete, prepend }){
   els.empty?.remove();
 
   const time = timestamp
@@ -395,6 +400,7 @@ function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timest
 
   const wrap = document.createElement("div");
   wrap.className = "chat-msg" + (isOwn ? " own" : "");
+  if (key) wrap.dataset.key = key;
 
   const avatar = document.createElement("div");
   avatar.className = "chat-avatar";
@@ -427,6 +433,27 @@ function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timest
   timeSpan.textContent = time;
   meta.appendChild(nameSpan);
   meta.appendChild(timeSpan);
+  if (onDelete){
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "chat-msg-delete";
+    delBtn.setAttribute("aria-label", "Delete message");
+    delBtn.title = "Delete message";
+    delBtn.innerHTML = ICON_TRASH;
+    delBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm("Delete this message?")) return;
+      delBtn.disabled = true;
+      try {
+        await onDelete();
+        wrap.remove();
+      } catch {
+        delBtn.disabled = false;
+        alert("Couldn't delete that message — try again in a moment.");
+      }
+    });
+    meta.appendChild(delBtn);
+  }
 
   const bubble = document.createElement("div");
   if (gifUrl){
@@ -447,13 +474,24 @@ function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timest
   col.appendChild(bubble);
   wrap.appendChild(avatar);
   wrap.appendChild(col);
-  els.messages.appendChild(wrap);
-  els.messages.scrollTop = els.messages.scrollHeight;
+  if (prepend){
+    els.messages.insertBefore(wrap, els.messages.firstChild);
+  } else {
+    els.messages.appendChild(wrap);
+    els.messages.scrollTop = els.messages.scrollHeight;
+  }
 }
 
-function renderMessage(message){
+function removeBubbleByKey(key){
+  if (!key) return;
+  const el = els.messages.querySelector(`[data-key="${CSS.escape(key)}"]`);
+  if (el) el.remove();
+}
+
+function renderMessage(message, prepend){
   if (!message || typeof message !== "object") return;
 
+  const key = typeof message.key === "string" ? message.key : null;
   const username = safeString(message.username, MAX_NAME_LEN).trim() || "Anonymous";
   const text = safeString(message.text, MAX_TEXT_LEN);
   const gifUrl = typeof message.gifUrl === "string" && GIF_URL_RE.test(message.gifUrl) ? message.gifUrl : null;
@@ -466,11 +504,15 @@ function renderMessage(message){
     ? identityId === getIdentity().id
     : username === (els.username.value || "Anonymous").trim() && username !== "Anonymous";
 
-  appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, identityId });
+  appendBubble({
+    username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, identityId, key, prepend,
+    onDelete: isOwn && key ? () => deleteCommunityMessage(key) : null
+  });
 }
 
-function renderDmMessage(message, otherProfile){
+function renderDmMessage(message, otherProfile, conversationId, prepend){
   if (!message || typeof message !== "object") return;
+  const key = typeof message.key === "string" ? message.key : null;
   const me = getIdentity();
   const senderId = typeof message.senderId === "string" ? message.senderId : null;
   const isOwn = senderId === me.id;
@@ -480,7 +522,10 @@ function renderDmMessage(message, otherProfile){
   const username = isOwn ? (me.username || "You") : (otherProfile?.username || "Unknown");
   const avatarEmoji = isOwn ? me.avatarEmoji : otherProfile?.avatarEmoji;
   const avatarColor = isOwn ? me.avatarColor : otherProfile?.avatarColor;
-  appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn });
+  appendBubble({
+    username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, key, prepend,
+    onDelete: isOwn && key ? () => deleteDirectMessage(conversationId, key) : null
+  });
 }
 
 // Community history is cached (rather than left purely as DOM) so switching
@@ -488,8 +533,14 @@ function renderDmMessage(message, otherProfile){
 let communityMessages = [];
 const COMMUNITY_CACHE_MAX = 50;
 
+function deleteCommunityMessage(key){
+  // Not caught here — see the delete-button handler in appendBubble(),
+  // which only removes the bubble once this actually resolves.
+  return remove(ref(database, "messages/" + key));
+}
+
 onChildAdded(recentMessagesQuery, (snapshot) => {
-  const msg = snapshot.val();
+  const msg = { key: snapshot.key, ...snapshot.val() };
   communityMessages.push(msg);
   if (communityMessages.length > COMMUNITY_CACHE_MAX) communityMessages.shift();
   if (activeConv === "community") renderMessage(msg);
@@ -497,6 +548,10 @@ onChildAdded(recentMessagesQuery, (snapshot) => {
     unread++;
     updateBadge();
   }
+});
+onChildRemoved(recentMessagesQuery, (snapshot) => {
+  communityMessages = communityMessages.filter(m => m.key !== snapshot.key);
+  if (activeConv === "community") removeBubbleByKey(snapshot.key);
 });
 // crude "first batch has loaded" flag so we don't count history as unread
 setTimeout(() => { hasReceivedFirstBatch = true; }, 1200);
@@ -572,8 +627,12 @@ function resetMessagesView(emptyText){
   els.empty = document.getElementById("chatEmpty");
 }
 function detachActiveConversation(){
-  if (activeDmUnsub){ activeDmUnsub(); activeDmUnsub = null; }
+  if (activeDmAddUnsub){ activeDmAddUnsub(); activeDmAddUnsub = null; }
+  if (activeDmRemoveUnsub){ activeDmRemoveUnsub(); activeDmRemoveUnsub = null; }
   if (activeDmTypingUnsub){ activeDmTypingUnsub(); activeDmTypingUnsub = null; }
+  dmOldestKey = null;
+  dmNoMoreHistory = false;
+  dmLoadingOlder = false;
   stopTyping();
 }
 function setActiveSidebarItem(){
@@ -603,7 +662,7 @@ function switchToCommunity(){
   setConversationOpen(true);
 }
 
-function switchToDm(conversationId, profile){
+async function switchToDm(conversationId, profile){
   if (activeConv === conversationId){ setConversationOpen(true); return; }
   detachActiveConversation();
   activeConv = conversationId;
@@ -616,7 +675,6 @@ function switchToDm(conversationId, profile){
   panel.setAttribute("aria-label", `Direct message with ${profile.username || "user"}`);
   resetMessagesView(`Say hi to ${profile.username || "them"} 👋`);
   renderTypingIndicator([]);
-  activeDmUnsub = subscribeConversationMessages(conversationId, msg => renderDmMessage(msg, profile));
   activeDmTypingUnsub = subscribeTyping(conversationId, othersTyping => {
     if (activeConv === conversationId) renderTypingIndicator(othersTyping ? [profile.username || "They"] : []);
   });
@@ -626,8 +684,47 @@ function switchToDm(conversationId, profile){
   renderDmSidebarList();
   setActiveSidebarItem();
   setConversationOpen(true);
+
+  const recent = await fetchRecentMessages(conversationId).catch(() => []);
+  if (activeConv !== conversationId) return; // switched to something else while this loaded
+  recent.forEach(entry => renderDmMessage(entry, profile, conversationId));
+  dmOldestKey = recent.length ? recent[0].key : null;
+  dmNoMoreHistory = recent.length < 20;
+  let newestKey = recent.length ? recent[recent.length - 1].key : null;
+  activeDmAddUnsub = subscribeNewMessages(conversationId, newestKey, entry => {
+    newestKey = entry.key;
+    renderDmMessage(entry, profile, conversationId);
+  });
+  activeDmRemoveUnsub = subscribeRemovedMessages(conversationId, key => removeBubbleByKey(key));
 }
 els.sidebarCommunity.addEventListener("click", switchToCommunity);
+
+/* ---------------- DM history pagination (scroll up to load older) ---------------- */
+let dmOldestKey = null;
+let dmNoMoreHistory = false;
+let dmLoadingOlder = false;
+
+async function loadOlderDmMessages(){
+  if (dmLoadingOlder || dmNoMoreHistory || !dmOldestKey || activeConv === "community") return;
+  const conversationId = activeConv;
+  const profile = activeDmProfile;
+  dmLoadingOlder = true;
+  els.messages.classList.add("loading-older");
+  const older = await fetchOlderMessages(conversationId, dmOldestKey).catch(() => []);
+  dmLoadingOlder = false;
+  els.messages.classList.remove("loading-older");
+  if (activeConv !== conversationId) return; // switched away while this loaded
+  if (!older.length){ dmNoMoreHistory = true; return; }
+  const prevScrollHeight = els.messages.scrollHeight;
+  const prevScrollTop = els.messages.scrollTop;
+  older.slice().reverse().forEach(entry => renderDmMessage(entry, profile, conversationId, true));
+  dmOldestKey = older[0].key;
+  if (older.length < 20) dmNoMoreHistory = true;
+  els.messages.scrollTop = prevScrollTop + (els.messages.scrollHeight - prevScrollHeight);
+}
+els.messages.addEventListener("scroll", () => {
+  if (activeConv !== "community" && els.messages.scrollTop < 60) loadOlderDmMessages();
+});
 
 /* ---------------- DM inbox + sidebar list ---------------- */
 let dmInboxUnsub = null;
@@ -643,10 +740,13 @@ function renderDmSidebarList(){
   const entries = Object.values(dmInboxCache).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   els.dmList.innerHTML = "";
   entries.forEach(entry => {
-    const item = document.createElement("button");
-    item.type = "button";
+    // A <div role="button"> rather than a real <button> — the remove "x"
+    // below has to be a proper <button> of its own, and buttons can't nest.
+    const item = document.createElement("div");
     item.className = "chat-sidebar-item chat-dm-item" + (activeConv === entry.conversationId ? " active" : "");
     item.dataset.conv = entry.conversationId;
+    item.setAttribute("role", "button");
+    item.tabIndex = 0;
 
     const avatar = document.createElement("span");
     avatar.className = "profile-avatar";
@@ -672,10 +772,31 @@ function renderDmSidebarList(){
       badge.textContent = unreadCount > 9 ? "9+" : String(unreadCount);
       item.appendChild(badge);
     }
-    item.addEventListener("click", () => switchToDm(entry.conversationId, {
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "chat-dm-remove";
+    const otherName = safeString(entry.otherUsername, MAX_NAME_LEN) || "this user";
+    removeBtn.setAttribute("aria-label", `Remove conversation with ${otherName}`);
+    removeBtn.title = "Remove conversation";
+    removeBtn.innerHTML = ICON_X_SMALL;
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!confirm(`Remove this conversation with ${otherName}? It'll disappear from your list — they'll still have theirs.`)) return;
+      removeConversation(entry.conversationId).then(() => {
+        if (activeConv === entry.conversationId) switchToCommunity();
+      });
+    });
+    item.appendChild(removeBtn);
+
+    const activate = () => switchToDm(entry.conversationId, {
       uid: entry.otherUid, username: entry.otherUsername,
       avatarEmoji: entry.otherAvatarEmoji, avatarColor: entry.otherAvatarColor
-    }));
+    });
+    item.addEventListener("click", activate);
+    item.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(); }
+    });
     els.dmList.appendChild(item);
   });
 }
