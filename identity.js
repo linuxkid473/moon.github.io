@@ -321,7 +321,19 @@ onAuthChange(async (user) => {
         streak: { ...stats.streak, ...(s.streak || {}) },
       };
     } else {
-      identity = { ...identity, id: user.uid, loggedIn: true };
+      // Brand new account, never persisted anything yet — default the
+      // display name (the editable, searchable name used everywhere,
+      // including DM search) to the username they just signed up with,
+      // instead of leaving whatever random guest name ("PlayerNNNN") they
+      // happened to have. They can still rename it later from the profile
+      // popover; this only sets the starting value.
+      const loginUsername = typeof user.email === "string" ? user.email.split("@")[0] : "";
+      identity = {
+        ...identity,
+        id: user.uid,
+        username: loginUsername ? loginUsername.slice(0, MAX_USERNAME_LEN) : identity.username,
+        loggedIn: true
+      };
     }
     saveJSON(IDENTITY_KEY, identity);
     notifyIdentity();

@@ -9,7 +9,8 @@
    stay live and be switched between, instead of being stuck in the corner. */
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
-  getDatabase, ref, push, onChildAdded, serverTimestamp, limitToLast, query
+  getDatabase, ref, push, set, remove, onDisconnect, onChildAdded, onValue,
+  serverTimestamp, limitToLast, query
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import {
   getIdentity, onIdentityChange, setUsername, recordChatMessage,
@@ -19,8 +20,9 @@ import {
 import { startPresence, subscribeOnlineUsers } from "./presence.js";
 import { censorText, isProfanityFilterOn, setProfanityFilterPref, hasStoredProfanityPref } from "./profanity.js";
 import {
-  searchAccountByUsername, openConversationWith, sendDirectMessage,
-  subscribeInbox, subscribeConversationMessages, markConversationRead
+  getAccountProfile, searchAccountByUsername, openConversationWith, sendDirectMessage,
+  subscribeInbox, subscribeConversationMessages, markConversationRead,
+  setTyping, subscribeTyping
 } from "./dm.js";
 
 const firebaseConfig = {
@@ -124,6 +126,7 @@ panel.innerHTML = `
       <div class="chat-messages" id="chatMessages">
         <div class="chat-empty" id="chatEmpty">No messages yet &mdash; say hi 👋</div>
       </div>
+      <div class="chat-typing-indicator" id="chatTypingIndicator" hidden></div>
       <div class="chat-inputbar">
         <div class="chat-username-row" id="chatUsernameRow">
           <input type="text" id="chatUsername" placeholder="Your name" aria-label="Your name" maxlength="20">
@@ -150,6 +153,23 @@ panel.innerHTML = `
 `;
 document.body.appendChild(panel);
 
+// Small floating card shown when a username is clicked anywhere (community
+// chat bubbles, the online list) — offers a "Message" button for account
+// holders. Lives outside #chatPanel so it can float above it in any mode.
+const userCard = document.createElement("div");
+userCard.className = "chat-user-card";
+userCard.id = "chatUserCard";
+userCard.hidden = true;
+userCard.innerHTML = `
+  <div class="chat-user-card-head">
+    <span class="profile-avatar lg" id="chatUserCardAvatar"></span>
+    <span class="chat-user-card-name" id="chatUserCardName"></span>
+  </div>
+  <p class="chat-user-card-note" id="chatUserCardNote" hidden></p>
+  <button class="pill-btn primary" id="chatUserCardMsgBtn" type="button" hidden>Message</button>
+`;
+document.body.appendChild(userCard);
+
 const els = {
   fab, panel,
   badge: document.getElementById("chatBadge"),
@@ -159,6 +179,7 @@ const els = {
   maximizeBtn: document.getElementById("chatMaximizeBtn"),
   messages: document.getElementById("chatMessages"),
   empty: document.getElementById("chatEmpty"),
+  typingIndicator: document.getElementById("chatTypingIndicator"),
   usernameRow: document.getElementById("chatUsernameRow"),
   username: document.getElementById("chatUsername"),
   charCount: document.getElementById("chatCharCount"),
@@ -188,6 +209,11 @@ const els = {
   dmSearchResults: document.getElementById("chatDmSearchResults"),
   dmGuestPrompt: document.getElementById("chatDmGuestPrompt"),
   dmSignInBtn: document.getElementById("chatDmSignInBtn"),
+  userCard,
+  userCardAvatar: document.getElementById("chatUserCardAvatar"),
+  userCardName: document.getElementById("chatUserCardName"),
+  userCardNote: document.getElementById("chatUserCardNote"),
+  userCardMsgBtn: document.getElementById("chatUserCardMsgBtn"),
 };
 
 /* ---------------- State ---------------- */
@@ -200,6 +226,14 @@ let lastFocused = null;
 let activeConv = "community"; // "community" | a DM conversationId
 let activeDmProfile = null;
 let activeDmUnsub = null;
+let activeDmTypingUnsub = null;
+let communityTypingNames = [];
+let typingActive = false;
+let typingClearTimer = null;
+let lastTypingWriteAt = 0;
+const TYPING_IDLE_MS = 4000; // stop reporting "typing" after this long with no keystrokes
+const TYPING_REFRESH_MS = 2500; // don't re-write "still typing" more often than this
+const TYPING_STALE_MS = 6000; // ignore a typing entry this old (sender's tab likely died)
 
 /* ---------------- Presence ---------------- */
 startPresence();
@@ -218,11 +252,15 @@ subscribeOnlineUsers(users => {
   els.onlineList.innerHTML = users.map(u => `
     <div class="chat-online-row">
       <span class="profile-avatar" style="background:${AVATAR_COLORS.includes(u.avatarColor) ? u.avatarColor : "#5e5ce6"}">${AVATAR_EMOJIS.includes(u.avatarEmoji) ? u.avatarEmoji : "🙂"}</span>
-      <span></span>
+      <span class="chat-clickable-name"></span>
     </div>`).join("");
   // Set the username text nodes via textContent (never innerHTML) since it's untrusted.
-  [...els.onlineList.querySelectorAll(".chat-online-row span:last-child")].forEach((el, i) => {
+  [...els.onlineList.querySelectorAll(".chat-clickable-name")].forEach((el, i) => {
     el.textContent = users[i].username;
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openUserCard(el, users[i].id, users[i].username);
+    });
   });
 });
 
@@ -290,6 +328,7 @@ function setOpen(open){
     if (!hadStoredProfanityPref && !hasStoredProfanityPref()) openFilterPrompt();
   } else {
     closeGifPicker();
+    stopTyping();
     els.panel.removeEventListener("keydown", trapFocus);
     if (lastFocused && document.contains(lastFocused)) lastFocused.focus();
     lastFocused = null;
@@ -347,7 +386,7 @@ function safeString(value, maxLen){
   return value.slice(0, maxLen);
 }
 
-function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn }){
+function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, identityId }){
   els.empty?.remove();
 
   const time = timestamp
@@ -376,6 +415,13 @@ function appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timest
   const nameSpan = document.createElement("span");
   nameSpan.className = "name";
   nameSpan.textContent = username;
+  if (identityId && !isOwn){
+    nameSpan.classList.add("chat-clickable-name");
+    nameSpan.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openUserCard(nameSpan, identityId, username);
+    });
+  }
   const timeSpan = document.createElement("span");
   timeSpan.className = "time";
   timeSpan.textContent = time;
@@ -420,7 +466,7 @@ function renderMessage(message){
     ? identityId === getIdentity().id
     : username === (els.username.value || "Anonymous").trim() && username !== "Anonymous";
 
-  appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn });
+  appendBubble({ username, avatarEmoji, avatarColor, text, gifUrl, timestamp, isOwn, identityId });
 }
 
 function renderDmMessage(message, otherProfile){
@@ -455,6 +501,71 @@ onChildAdded(recentMessagesQuery, (snapshot) => {
 // crude "first batch has loaded" flag so we don't count history as unread
 setTimeout(() => { hasReceivedFirstBatch = true; }, 1200);
 
+/* ---------------- Typing indicator ---------------- */
+// Community typing lives on the same public, rules-less chatroom-128ee
+// project as the messages themselves — same trust model (untrusted, but
+// cheap and low-stakes to get wrong). DM typing lives on moongames-eba7f
+// and is participant-scoped by database.rules.json (dmTyping).
+function renderTypingIndicator(names){
+  if (!names || !names.length){
+    els.typingIndicator.hidden = true;
+    els.typingIndicator.textContent = "";
+    return;
+  }
+  let text;
+  if (names.length === 1) text = `${names[0]} is typing…`;
+  else if (names.length === 2) text = `${names[0]} and ${names[1]} are typing…`;
+  else text = `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…`;
+  els.typingIndicator.textContent = text;
+  els.typingIndicator.hidden = false;
+}
+
+function writeCommunityTyping(isTyping){
+  const identity = getIdentity();
+  const typingRef = ref(database, "typing/" + identity.id);
+  if (isTyping){
+    onDisconnect(typingRef).remove();
+    set(typingRef, { username: (els.username.value.trim() || identity.username || "Anonymous").slice(0, MAX_NAME_LEN), timestamp: serverTimestamp() }).catch(() => {});
+  } else {
+    onDisconnect(typingRef).cancel();
+    remove(typingRef).catch(() => {});
+  }
+}
+
+onValue(ref(database, "typing"), (snapshot) => {
+  const now = Date.now();
+  const myId = getIdentity().id;
+  const names = [];
+  snapshot.forEach(child => {
+    if (child.key === myId) return;
+    const v = child.val();
+    if (v && typeof v.timestamp === "number" && now - v.timestamp < TYPING_STALE_MS){
+      names.push(safeString(v.username, MAX_NAME_LEN).trim() || "Someone");
+    }
+  });
+  communityTypingNames = names;
+  if (activeConv === "community") renderTypingIndicator(names);
+});
+
+function reportTyping(){
+  const now = Date.now();
+  if (!typingActive || now - lastTypingWriteAt > TYPING_REFRESH_MS){
+    lastTypingWriteAt = now;
+    typingActive = true;
+    if (activeConv === "community") writeCommunityTyping(true);
+    else if (activeDmProfile) setTyping(activeConv, true);
+  }
+  clearTimeout(typingClearTimer);
+  typingClearTimer = setTimeout(stopTyping, TYPING_IDLE_MS);
+}
+function stopTyping(){
+  clearTimeout(typingClearTimer);
+  if (!typingActive) return;
+  typingActive = false;
+  if (activeConv === "community") writeCommunityTyping(false);
+  else if (activeDmProfile) setTyping(activeConv, false);
+}
+
 /* ---------------- Conversation switching (community <-> DMs) ---------------- */
 function resetMessagesView(emptyText){
   els.messages.innerHTML = `<div class="chat-empty" id="chatEmpty">${emptyText}</div>`;
@@ -462,6 +573,8 @@ function resetMessagesView(emptyText){
 }
 function detachActiveConversation(){
   if (activeDmUnsub){ activeDmUnsub(); activeDmUnsub = null; }
+  if (activeDmTypingUnsub){ activeDmTypingUnsub(); activeDmTypingUnsub = null; }
+  stopTyping();
 }
 function setActiveSidebarItem(){
   els.sidebarCommunity.classList.toggle("active", activeConv === "community");
@@ -485,6 +598,7 @@ function switchToCommunity(){
   panel.setAttribute("aria-label", "Community chat");
   resetMessagesView("No messages yet — say hi 👋");
   communityMessages.forEach(renderMessage);
+  renderTypingIndicator(communityTypingNames);
   setActiveSidebarItem();
   setConversationOpen(true);
 }
@@ -501,7 +615,11 @@ function switchToDm(conversationId, profile){
   els.input.placeholder = `Message ${profile.username || "them"}…`;
   panel.setAttribute("aria-label", `Direct message with ${profile.username || "user"}`);
   resetMessagesView(`Say hi to ${profile.username || "them"} 👋`);
+  renderTypingIndicator([]);
   activeDmUnsub = subscribeConversationMessages(conversationId, msg => renderDmMessage(msg, profile));
+  activeDmTypingUnsub = subscribeTyping(conversationId, othersTyping => {
+    if (activeConv === conversationId) renderTypingIndicator(othersTyping ? [profile.username || "They"] : []);
+  });
   markConversationRead(conversationId);
   if (dmInboxCache[conversationId]) dmInboxCache[conversationId].unreadCount = 0;
   recomputeDmUnreadTotal();
@@ -658,6 +776,86 @@ els.dmSearch.addEventListener("input", () => {
   }, 350);
 });
 
+/* ---------------- Click-a-username -> Message card ---------------- */
+// Wired from community chat bubbles and the "who's online" list — the
+// only two places a username appears outside of an already-open DM.
+let userCardRequestId = null;
+function positionUserCard(anchorEl){
+  const rect = anchorEl.getBoundingClientRect();
+  const cardWidth = 220;
+  let left = Math.min(rect.left, window.innerWidth - cardWidth - 12);
+  left = Math.max(12, left);
+  let top = rect.bottom + 6;
+  els.userCard.style.left = `${left}px`;
+  els.userCard.style.top = `${top}px`;
+  // Flip above the anchor if it would otherwise run off the bottom edge —
+  // measured after an initial layout pass since the card's height depends
+  // on which state (loading/note/button) is currently showing.
+  requestAnimationFrame(() => {
+    const cardRect = els.userCard.getBoundingClientRect();
+    if (cardRect.bottom > window.innerHeight - 12){
+      els.userCard.style.top = `${Math.max(12, rect.top - cardRect.height - 6)}px`;
+    }
+  });
+}
+function closeUserCard(){
+  els.userCard.hidden = true;
+  userCardRequestId = null;
+}
+async function openUserCard(anchorEl, identityId, fallbackUsername){
+  if (!identityId) return;
+  const requestId = identityId + ":" + Date.now();
+  userCardRequestId = requestId;
+  els.userCardName.textContent = fallbackUsername || "…";
+  els.userCardAvatar.style.background = "#5e5ce6";
+  els.userCardAvatar.textContent = "🙂";
+  els.userCardMsgBtn.hidden = true;
+  els.userCardMsgBtn.onclick = null;
+  els.userCardNote.hidden = false;
+  els.userCardNote.textContent = "Loading…";
+  els.userCard.hidden = false;
+  positionUserCard(anchorEl);
+
+  const profile = await getAccountProfile(identityId).catch(() => null);
+  if (userCardRequestId !== requestId) return; // a newer click superseded this one
+
+  if (!profile){
+    els.userCardNote.textContent = "This user doesn't have an account.";
+    return;
+  }
+  els.userCardName.textContent = profile.username;
+  els.userCardAvatar.style.background = AVATAR_COLORS.includes(profile.avatarColor) ? profile.avatarColor : "#5e5ce6";
+  els.userCardAvatar.textContent = AVATAR_EMOJIS.includes(profile.avatarEmoji) ? profile.avatarEmoji : "🙂";
+
+  if (profile.uid === getIdentity().id){
+    els.userCardNote.textContent = "That's you.";
+    return;
+  }
+  if (!isLoggedIn()){
+    els.userCardNote.textContent = "Sign in to send direct messages.";
+    return;
+  }
+  els.userCardNote.hidden = true;
+  els.userCardMsgBtn.hidden = false;
+  els.userCardMsgBtn.onclick = async () => {
+    closeUserCard();
+    try {
+      const conversationId = await openConversationWith(profile.uid, profile);
+      if (!isOpen) setOpen(true);
+      if (!isMaximized) setMaximized(true);
+      switchToDm(conversationId, profile);
+    } catch { /* ignore — network hiccup or rules race */ }
+  };
+}
+document.addEventListener("click", (e) => {
+  if (!els.userCard.hidden && !els.userCard.contains(e.target) && !e.target.classList.contains("chat-clickable-name")){
+    closeUserCard();
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !els.userCard.hidden) closeUserCard();
+});
+
 /* ---------------- Sending ---------------- */
 function identityFields(){
   const identity = getIdentity();
@@ -673,6 +871,7 @@ function sendMessage(){
   } else if (activeDmProfile){
     sendDirectMessage(activeConv, activeDmProfile.uid, { text }).catch(() => {});
   }
+  stopTyping();
   els.input.value = "";
   autosize();
   updateSendState();
@@ -695,7 +894,12 @@ function autosize(){
   els.input.style.height = "auto";
   els.input.style.height = Math.min(els.input.scrollHeight, 90) + "px";
 }
-els.input.addEventListener("input", () => { autosize(); updateSendState(); });
+els.input.addEventListener("input", () => {
+  autosize();
+  updateSendState();
+  if (els.input.value.trim()) reportTyping();
+  else stopTyping();
+});
 els.input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey){
     e.preventDefault();

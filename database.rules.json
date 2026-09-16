@@ -55,6 +55,16 @@
           "$other": { ".validate": false }
         }
       }
+    },
+
+    "dmTyping": {
+      "$conversationId": {
+        ".read": "auth != null && $conversationId.contains(auth.uid)",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && $conversationId.contains(auth.uid) && $conversationId.contains($uid)",
+          ".validate": "newData.isNumber()"
+        }
+      }
     }
   }
 }

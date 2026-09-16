@@ -11,12 +11,30 @@
 import { database } from "./firebase-init.js";
 import { getIdentity } from "./identity.js";
 import {
-  ref, push, update, get, onChildAdded, onValue, runTransaction,
+  ref, push, update, get, set, remove, onDisconnect, onChildAdded, onValue, runTransaction,
   query, orderByChild, equalTo, limitToLast, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+// A typing write is only trusted for up to this long — if onDisconnect
+// didn't fire in time (crash, network drop) a stale entry still clears
+// itself client-side once every reader's clock passes this window.
+const TYPING_TTL_MS = 6000;
+
 export function getConversationId(uidA, uidB){
   return [uidA, uidB].sort().join("_");
+}
+
+export async function getAccountProfile(uid){
+  if (!uid) return null;
+  const snap = await get(ref(database, `players/${uid}`));
+  const v = snap.val();
+  if (!v || v.hasAccount !== true) return null;
+  return {
+    uid,
+    username: typeof v.username === "string" ? v.username : "Unknown",
+    avatarEmoji: v.avatarEmoji,
+    avatarColor: v.avatarColor
+  };
 }
 
 export async function searchAccountByUsername(username){
@@ -114,4 +132,33 @@ export function subscribeInbox(cb){
 export function subscribeConversationMessages(conversationId, cb){
   const q = query(ref(database, `dmMessages/${conversationId}`), limitToLast(50));
   return onChildAdded(q, snap => cb(snap.val()));
+}
+
+export function setTyping(conversationId, isTyping){
+  const me = getIdentity();
+  if (!me.loggedIn) return Promise.resolve();
+  const typingRef = ref(database, `dmTyping/${conversationId}/${me.id}`);
+  if (isTyping){
+    onDisconnect(typingRef).remove();
+    return set(typingRef, serverTimestamp()).catch(() => {});
+  }
+  onDisconnect(typingRef).cancel();
+  return remove(typingRef).catch(() => {});
+}
+
+// cb(isOtherPersonTyping: boolean) — only the other participant's entry is
+// considered, own writes never echo back as "someone is typing".
+export function subscribeTyping(conversationId, cb){
+  const me = getIdentity();
+  const typingRef = ref(database, `dmTyping/${conversationId}`);
+  return onValue(typingRef, snap => {
+    const now = Date.now();
+    let othersTyping = false;
+    snap.forEach(child => {
+      if (child.key === me.id) return;
+      const ts = child.val();
+      if (typeof ts === "number" && now - ts < TYPING_TTL_MS) othersTyping = true;
+    });
+    cb(othersTyping);
+  });
 }
