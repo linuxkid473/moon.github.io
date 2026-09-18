@@ -942,6 +942,16 @@
     ]
   },
   {
+    "id": "wolf3d",
+    "href": "iframes/wolf3d.html",
+    "img": "resources/wolf3d.webp",
+    "title": "Wolfenstein 3D",
+    "genres": [
+      "fps",
+      "action"
+    ]
+  },
+  {
     "id": "cluster",
     "href": "iframes/cluster.html",
     "img": "resources/cluster.webp",

@@ -90,6 +90,7 @@ const gameNames = {
     "iframes/hollowknight.html": "hollow knight",
     "iframes/silksong.html": "hollow knight silksong",
     "iframes/doom.html": "doom",
+    "iframes/wolf3d.html": "wolfenstein 3d wolf3d",
     "iframes/cluster.html": "cluster rush",
     "iframes/fnae.html": "five nights at epsteins epstein's fnae",
     "iframes/worldbox.html": "worldbox god simulator",
