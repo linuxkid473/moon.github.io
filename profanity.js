@@ -20,3 +20,24 @@ export function setProfanityFilterPref(on){
 export function hasStoredProfanityPref(){
   return localStorage.getItem(PROFANITY_STORAGE_KEY) !== null;
 }
+
+/* Hard block (not just censor) on specific names — always on, not gated by
+   the opt-in profanity filter pref. Normalizes leetspeak substitutions,
+   strips non-letters (so spacing/punctuation can't dodge it), and collapses
+   repeated letters (so "viihaaan" still matches "vihaan") before matching. */
+const BLOCKED_NAMES_RAW = ["vihaan", "tony", "aaryan"];
+const LEET_MAP = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s", "!": "i" };
+
+function normalizeForBlocklist(text){
+  let s = String(text || "").toLowerCase();
+  s = s.replace(/[013457@$!]/g, ch => LEET_MAP[ch] || ch);
+  s = s.replace(/[^a-z]/g, "");
+  s = s.replace(/(.)\1+/g, "$1");
+  return s;
+}
+const BLOCKED_NAMES = BLOCKED_NAMES_RAW.map(normalizeForBlocklist);
+
+export function containsBlockedName(text){
+  const normalized = normalizeForBlocklist(text);
+  return BLOCKED_NAMES.some(name => normalized.includes(name));
+}

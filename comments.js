@@ -3,7 +3,7 @@
    different gameId, so listeners never leak across games. */
 import { database } from "./firebase-init.js";
 import { getIdentity, recordComment, isLoggedIn, onIdentityChange } from "./identity.js";
-import { censorText, isProfanityFilterOn } from "./profanity.js";
+import { censorText, isProfanityFilterOn, containsBlockedName } from "./profanity.js";
 import {
   ref, push, onChildAdded, onValue, runTransaction, serverTimestamp, limitToLast, query
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
@@ -111,6 +111,10 @@ export function mount(gameId){
     ev.preventDefault();
     const text = e.input.value.trim();
     if (!text || !currentGameId || !isLoggedIn()) return;
+    if (containsBlockedName(text)){
+      alert("That comment can't be posted.");
+      return;
+    }
     const identity = getIdentity();
     push(ref(database, `comments/${currentGameId}/items`), {
       identityId: identity.id,

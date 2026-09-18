@@ -18,7 +18,7 @@ import {
   AVATAR_EMOJIS, AVATAR_COLORS
 } from "./identity.js";
 import { startPresence, subscribeOnlineUsers } from "./presence.js";
-import { censorText, isProfanityFilterOn, setProfanityFilterPref, hasStoredProfanityPref } from "./profanity.js";
+import { censorText, isProfanityFilterOn, setProfanityFilterPref, hasStoredProfanityPref, containsBlockedName } from "./profanity.js";
 import {
   getAccountProfile, searchAccountByUsername, openConversationWith, removeConversation,
   sendDirectMessage, deleteDirectMessage,
@@ -1028,6 +1028,10 @@ function identityFields(){
 function sendMessage(){
   const text = els.input.value.trim();
   if (!text) return;
+  if (containsBlockedName(text)){
+    alert("That message can't be sent.");
+    return;
+  }
   if (activeConv === "community"){
     const username = els.username.value.trim() || "Anonymous";
     push(messagesRef, { username, text, timestamp: serverTimestamp(), ...identityFields() });
