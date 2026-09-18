@@ -1,17 +1,17 @@
-/* Moon Games chat drawer — community chat is the same public chatroom
-   backend as the original harshulgoon.github.io/chatroom.html (Firebase
-   Realtime Database), rebuilt as a site-wide, gameplay-integrated drawer.
-   Private DMs are a separate feature layered on top, built on the site's
-   own Firebase project (see dm.js) and gated to real accounts only —
-   guests keep full access to community chat but see a sign-in prompt in
-   place of the DM list. A maximize toggle expands the panel into a large
-   window with a sidebar so community chat + multiple DM threads can all
-   stay live and be switched between, instead of being stuck in the corner. */
-import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+/* Moon Games chat drawer — community chat now runs on the site's OWN
+   Firebase project (moongames-eba7f, via firebase-init.js), same as
+   comments/DMs/presence, instead of the old third-party chatroom-128ee
+   project. Private DMs are a separate feature layered on top (see dm.js)
+   and gated to real accounts only — guests keep full access to community
+   chat but see a sign-in prompt in place of the DM list. A maximize toggle
+   expands the panel into a large window with a sidebar so community chat +
+   multiple DM threads can all stay live and be switched between, instead
+   of being stuck in the corner. */
 import {
-  getDatabase, ref, push, set, remove, onDisconnect, onChildAdded, onChildRemoved, onValue,
+  ref, push, set, remove, onDisconnect, onChildAdded, onChildRemoved, onValue,
   serverTimestamp, limitToLast, query
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { database } from "./firebase-init.js";
 import {
   getIdentity, onIdentityChange, setUsername, recordChatMessage,
   isLoggedIn, onAuthReady, isValidPhotoURL,
@@ -27,16 +27,6 @@ import {
   setTyping, subscribeTyping
 } from "./dm.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDWLUjSbCBuj5SR7MoqLo46EArhz_m4INc",
-  authDomain: "chatroom-128ee.firebaseapp.com",
-  databaseURL: "https://chatroom-128ee-default-rtdb.firebaseio.com",
-  projectId: "chatroom-128ee",
-  storageBucket: "chatroom-128ee.firebasestorage.app",
-  messagingSenderId: "182268717548",
-  appId: "1:182268717548:web:3a6bc1391aa25ea6b9f8c9",
-  measurementId: "G-N8C16YX5VN"
-};
 const GIPHY_API_KEY = "U0f10I8Pc4dCa5Rc1nyBtfIV3tJ1wSOH";
 
 function colorFor(name){
@@ -410,9 +400,7 @@ function setMaximized(on){
 els.maximizeBtn.addEventListener("click", () => setMaximized(!isMaximized));
 els.backBtn.addEventListener("click", () => els.panel.classList.remove("conversation-open"));
 
-/* ---------------- Firebase (community chat, separate project) ---------------- */
-const app = getApps().some(a => a.name === "[DEFAULT]") ? getApp() : initializeApp(firebaseConfig);
-const database = getDatabase(app);
+/* ---------------- Firebase (community chat, moongames-eba7f) ---------------- */
 const messagesRef = ref(database, "messages");
 const recentMessagesQuery = query(messagesRef, limitToLast(50));
 

@@ -15,6 +15,8 @@
     "stats": { ".read": true, ".write": true },
     "rooms": { ".read": true, ".write": true },
     "comments": { ".read": true, ".write": true },
+    "messages": { ".read": true, ".write": true, ".indexOn": ["timestamp"] },
+    "typing": { ".read": true, "$id": { ".write": true } },
 
     "dmMeta": {
       "$conversationId": {
