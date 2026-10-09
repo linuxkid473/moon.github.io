@@ -215,23 +215,28 @@ function signTex(lines, bg, fg, w, h) {
 }
 
 function labelTex(text) {
-  return canvasTex(256, 96, (g, w, h) => {
+  return canvasTex(384, 96, (g, w, h) => {
     g.fillStyle = 'rgba(0, 0, 0, 0.6)';
     g.fillRect(4, 4, w - 8, h - 8);
     g.fillStyle = '#fff';
-    g.font = '900 46px system-ui, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
+    let size = 46;
+    g.font = `900 ${size}px system-ui, sans-serif`;
+    while (g.measureText(text).width > w - 24 && size > 20) {
+      size -= 2;
+      g.font = `900 ${size}px system-ui, sans-serif`;
+    }
     g.fillText(text, w / 2, h / 2 + 2);
   });
 }
 
-/* Face photo -> square canvas texture, zoomed in on the face. The crop keeps the middle
-   of the photo (the face) and fills the whole square panel. */
+/* Face photo -> canvas texture for the whole front of the head (0.56 x 0.64 shape).
+   The photo is zoomed in on the face. */
 function faceTexture(src) {
-  const N = 256;
+  const W = 224, H = 256;
   const c = document.createElement('canvas');
-  c.width = c.height = N;
+  c.width = W; c.height = H;
   const g = c.getContext('2d');
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -239,12 +244,11 @@ function faceTexture(src) {
 
   const img = new Image();
   img.onload = () => {
-    const W = img.naturalWidth, H = img.naturalHeight;
-    const zoom = 0.6;                       // fraction of the photo kept: smaller = closer
-    const sw = Math.min(W, H) * zoom;
-    const sx = (W - sw) / 2;
-    const sy = Math.max(0, (H - sw) / 2 - Math.min(W, H) * 0.04);   // nudge up onto the face
-    g.drawImage(img, sx, sy, sw, sw, 0, 0, N, N);
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const sw = iw * 0.66, sh = sw * (H / W);
+    const sx = (iw - sw) / 2;
+    const sy = Math.max(0, Math.min(ih - sh, (ih - sh) / 2 - ih * 0.04));
+    g.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
     tex.needsUpdate = true;
   };
   img.src = src;
@@ -252,12 +256,12 @@ function faceTexture(src) {
 }
 
 /* A thin, blocky person built from rectangular prisms. Arms and legs are pivot groups
-   named so they can swing. The face is a square panel on the front of the head. */
+   named so they can swing. People without a suit wear a tucked-in shirt and tie. */
 function buildPerson(o) {
   const g = new THREE.Group();
-  const jacket = pmat(o.suit, { roughness: 0.6 });
-  const pants = pmat(o.pants, { roughness: 0.6 });
   const shirt = pmat(o.shirt || 0xffffff, { roughness: 0.5 });
+  const jacket = o.suit ? pmat(o.suit, { roughness: 0.6 }) : shirt;
+  const pants = pmat(o.pants, { roughness: 0.6 });
   const skin = pmat(SKIN_HEX, { roughness: 0.6 });
   const dark = pmat(0x1a1a1a, { roughness: 0.4 });
   const shoe = pmat(0x161616, { roughness: 0.35 });
@@ -272,26 +276,20 @@ function buildPerson(o) {
     g.add(hip);
   }
   g.add(box(0.46, 0.22, 0.26, pants, 0, 1.08, 0));
+  if (!o.suit) g.add(box(0.58, 0.08, 0.32, dark, 0, 1.2, 0));   // belt: shirt is tucked in
 
-  // torso: jacket, shirt front, optional tie
+  // torso
   g.add(box(0.56, 1.0, 0.3, jacket, 0, 1.7, 0));
-  g.add(box(0.3, 0.42, 0.04, shirt, 0, 1.9, 0.16));
+  if (o.suit) g.add(box(0.3, 0.42, 0.04, shirt, 0, 1.9, 0.16));  // shirt front under the jacket
   if (o.tie) g.add(box(0.08, 0.5, 0.03, pmat(o.tie, { roughness: 0.4 }), 0, 1.75, 0.19));
 
-  // neck and head
+  // neck and head: the photo covers the whole front of the head
   g.add(box(0.18, 0.16, 0.18, skin, 0, 2.3, 0));
-  const head = box(0.56, 0.64, 0.5, skin, 0, 2.6, 0);
+  const faceMat = o.face ? new THREE.MeshStandardMaterial({ map: faceTexture(o.face), roughness: 0.7 }) : null;
+  const head = box(0.56, 0.64, 0.5, o.face ? [skin, skin, skin, skin, faceMat, skin] : skin, 0, 2.6, 0);
   head.name = 'head';
   g.add(head);
-  if (o.face) {
-    const facePanel = mesh(
-      new THREE.PlaneGeometry(0.42, 0.42),
-      new THREE.MeshStandardMaterial({ map: faceTexture(o.face), roughness: 0.7 })
-    );
-    facePanel.position.set(0, 2.62, 0.262);
-    facePanel.castShadow = false;
-    g.add(facePanel);
-  } else {
+  if (!o.face) {
     for (const s of [-1, 1]) g.add(box(0.08, 0.08, 0.02, dark, s * 0.13, 2.66, 0.26));
     g.add(box(0.16, 0.03, 0.02, pmat(0x7a3b2e), 0, 2.5, 0.26));
   }
@@ -312,13 +310,17 @@ function buildPerson(o) {
     shoulder.add(box(0.14, 0.5, 0.16, jacket, 0, -0.81, 0));
     shoulder.add(box(0.14, 0.14, 0.14, skin, 0, -1.13, 0));
     if (side > 0 && o.briefcase) shoulder.add(box(0.34, 0.24, 0.1, pmat(0x6b3f1f, { roughness: 0.5 }), 0, -1.32, 0.06));
+    if (side > 0 && o.mic) {
+      shoulder.add(box(0.05, 0.36, 0.05, dark, 0, -1.36, 0.06));
+      shoulder.add(box(0.11, 0.13, 0.11, pmat(0x8a8f99, { roughness: 0.4 }), 0, -1.6, 0.06));
+    }
     g.add(shoulder);
   }
 
   // label
   const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex(o.label), depthTest: false, transparent: true }));
   label.name = 'label';
-  label.scale.set(1.6, 0.6, 1);
+  label.scale.set(2.4, 0.6, 1);
   label.position.set(0, o.hat ? 3.45 : 3.25, 0);
   label.renderOrder = 10;
   g.add(label);
@@ -385,14 +387,32 @@ function buildTemplates() {
   tree.add(crown);
   T.tree = tree;
 
+  // political props: a Parliament-style building and campaign billboards
+  const cream = mat(0xf2ead7), stone = mat(0xd9cfb8);
+  const parliament = new THREE.Group();
+  parliament.add(box(4.6, 2.2, 3, cream, 0, 1.1, 0));
+  parliament.add(box(4.9, 0.3, 3.3, stone, 0, 2.35, 0));
+  parliament.add(box(2.4, 0.5, 3.1, cream, 0, 2.7, 0));
+  for (const x of [-1.6, -0.53, 0.53, 1.6]) parliament.add(box(0.3, 2.2, 0.3, stone, x, 1.1, 1.6));
+  T.parliament = parliament;
+  T.billboards = [['VOTE', '#1f4fb8', '#ffffff'], ['POLICY', '#ffffff', '#1f4fb8'], ['BALLOT', '#c0152a', '#ffffff']].map(([text, bg, fg]) => {
+    const b = new THREE.Group();
+    b.add(box(0.12, 2.6, 0.12, mat(0x555555), -0.9, 1.3, 0));
+    b.add(box(0.12, 2.6, 0.12, mat(0x555555), 0.9, 1.3, 0));
+    const board = mesh(new THREE.BoxGeometry(2.4, 1.2, 0.08), new THREE.MeshStandardMaterial({ map: signTex([text], bg, fg, 512, 256), roughness: 0.6 }));
+    board.position.set(0, 2.0, 0);
+    b.add(board);
+    return b;
+  });
+
   const faces = window.BOSS_FACES || {};
-  T.ALBO = buildPerson({ label: 'ALBO', suit: 0x3d4a5c, pants: 0x2a2f3a, tie: 0xc0392b, hat: 0xffd21f, face: faces.ALBO, scale: 1.15 });
-  T.HANSON = buildPerson({ label: 'HANSON', suit: 0x9b2f4f, pants: 0x4a2530, tie: 0x222222, face: faces.HANSON, scale: 1.15 });
+  T.ALBO = buildPerson({ label: 'PM ALBO', suit: 0x3d4a5c, pants: 0x2a2f3a, tie: 0xc0392b, hat: 0xffd21f, face: faces.ALBO, mic: true, scale: 1.15 });
+  T.HANSON = buildPerson({ label: 'SEN. HANSON', suit: 0x9b2f4f, pants: 0x4a2530, tie: 0x222222, face: faces.HANSON, mic: true, scale: 1.15 });
 }
 buildTemplates();
 
 /* ---------- player ---------- */
-const player = buildPerson({ label: 'ANGUS', suit: 0x23324f, pants: 0x1b2232, shirt: 0xa9cde8, tie: null, briefcase: true, face: window.BOSS_FACES?.ANGUS });
+const player = buildPerson({ label: 'MP ANGUS', pants: 0x2b2f3a, shirt: 0xc4dcf2, tie: 0x1f3f8f, belt: true, briefcase: true, face: window.BOSS_FACES?.ANGUS });
 scene.add(player);
 
 /* ---------- state & world ---------- */
@@ -448,7 +468,9 @@ function spawnShot(b) {
 }
 
 function spawnScenery(side) {
-  const m = place(Math.random() < 0.6 ? pick(T.buildings) : T.tree, 0, SPAWN_Z);
+  const r = Math.random();
+  const tpl = r < 0.1 ? T.parliament : r < 0.3 ? pick(T.billboards) : Math.random() < 0.6 ? pick(T.buildings) : T.tree;
+  const m = place(tpl, 0, SPAWN_Z);
   m.position.x = side * rand(8, 12);
   world.scenery.push({ mesh: m });
 }
