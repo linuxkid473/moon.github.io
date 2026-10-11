@@ -43,7 +43,6 @@ export function createFx(scene) {
 
   return {
     burst,
-    pickup(x, y, z) { burst(x, y, z, 0x7cfc9a, 10, { speed: 3.5, up: 2.5, life: 0.5, gravity: 6 }); },
     landing(x, z) { burst(x, 0.1, z, 0xd9b7a8, 8, { speed: 2.4, up: 0.6, life: 0.45, gravity: 2, spread: 1.4 }); },
     hit(x, y, z) { burst(x, y, z, 0xff3040, 34, { speed: 7, up: 4, life: 0.8, gravity: 10 }); burst(x, y, z, 0xffffff, 10, { speed: 5, up: 3, life: 0.4 }); },
     stomp(x, y, z) { burst(x, y, z, 0xffd34d, 16, { speed: 4, up: 3, life: 0.6 }); },

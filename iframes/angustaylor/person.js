@@ -1,7 +1,7 @@
 // Low-poly people with real faces.
 //
 // Head = a vertex-coloured skull (hair colour on top and at the back, skin elsewhere) + a high-detail
-// front patch that carries the portrait photo, with a 3D nose bump, + ears and a rear hair shell.
+// near-flat face plate that carries the portrait photo, + ears and a rear hair shell.
 // If a portrait fails to load the patch gets a painted cartoon face, so the game still runs.
 //
 // Joint names (legL/legR/kneeL/kneeR, armL/armR/elbowL/elbowR, head) drive the run cycle and the
@@ -26,7 +26,8 @@ function skullGeometry(hairCol, skinCol, low) {
   const hair = new THREE.Color(hairCol), skin = new THREE.Color(skinCol), c = new THREE.Color();
   const colors = new Float32Array(p.count * 3);
   for (let i = 0; i < p.count; i++) {
-    const [x, y, z] = jaw(p.getX(i), p.getY(i), p.getZ(i));
+    const z0 = p.getZ(i);
+    const [x, y, z] = jaw(p.getX(i), p.getY(i), z0 > 0 ? 0.82 * Math.pow(z0, 0.6) : z0);   // a flatter front than a sphere
     // hairline: high on the forehead, running down the back of the head (lower for long styles)
     const back = smooth(0.35, -0.5, z);
     const line = 0.6 + (low - 0.6) * back - 0.5 * smooth(0.6, 0.95, Math.abs(x)) * (1 - back);
@@ -39,16 +40,16 @@ function skullGeometry(hairCol, skinCol, low) {
   return geo;
 }
 
-/** The front hemisphere, planar-mapped so the portrait lands on it undistorted, with a nose bump. */
-function facePatchGeometry(noseX, noseY) {
-  const geo = new THREE.SphereGeometry(1, 28, 20, 0, Math.PI, 0, Math.PI);   // phi 0..PI = the z >= 0 half
-  const p = geo.attributes.position, uv = geo.attributes.uv;
+/**
+ * The face: a nearly flat oval plate in front of the skull, planar-mapped so the whole portrait shows
+ * undistorted (a sphere would stretch and cut off the edges). It bulges only slightly towards the middle.
+ */
+function facePlateGeometry() {
+  const geo = new THREE.PlaneGeometry(2, 2, 14, 14);
+  const p = geo.attributes.position;
   for (let i = 0; i < p.count; i++) {
-    const [x, y, z0] = jaw(p.getX(i), p.getY(i), p.getZ(i));
-    uv.setXY(i, 0.5 + 0.5 * x, 0.5 + 0.5 * y);
-    const d2 = (x - noseX) ** 2 + (y - noseY) ** 2;
-    const z = z0 + 0.34 * Math.exp(-d2 / (2 * 0.16 * 0.16)) * Math.max(0, z0);   // nose
-    p.setXYZ(i, x * HEAD_RX * 1.012, y * HEAD_RY * 1.012, z * HEAD_RZ * 1.012);
+    const x = p.getX(i), y = p.getY(i), r2 = x * x + y * y;
+    p.setXYZ(i, x * HEAD_RX, y * HEAD_RY, HEAD_RZ * (0.9 - 0.12 * Math.min(r2, 1.5)));
   }
   geo.computeVertexNormals();
   return geo;
@@ -81,14 +82,14 @@ function faceMaterial(o) {
   if (o.faceImage) {
     map = new THREE.Texture(o.faceImage);
     map.colorSpace = THREE.SRGBColorSpace;
-    map.anisotropy = 4;
+    map.anisotropy = 8;
     map.needsUpdate = true;
   } else {
     map = paintedFace(o.skin ?? SKIN_FALLBACK, o.hair?.color ?? 0x3b2a1f);
   }
-  const m = new THREE.MeshStandardMaterial({
-    map, roughness: 0.75, transparent: true,
-    emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.42,   // keeps the face readable under the red rally lighting
+  // Unlit, so the photo keeps its real colours instead of being tinted red by the stage lights.
+  const m = new THREE.MeshBasicMaterial({
+    map, transparent: true, toneMapped: false, color: 0xf4f0f0,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   faceMatCache.set(key, m);
@@ -105,7 +106,9 @@ function buildHead(o, skin) {
   const hair = o.hair || { color: 0x3b2a1f, style: 'short' };
   const bob = hair.style === 'bob';
   head.add(mesh(skullGeometry(hair.color, o.skin ?? SKIN_FALLBACK, bob ? -0.7 : -0.25), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true })));
-  head.add(mesh(facePatchGeometry(o.noseX ?? 0, o.noseY ?? -0.25), faceMaterial(o)));
+  const plate = new THREE.Mesh(facePlateGeometry(), faceMaterial(o));
+  plate.name = 'face';
+  head.add(plate);
   for (const side of [-1, 1]) {
     const ear = mesh(new THREE.SphereGeometry(1, 5, 4), skin);
     ear.scale.set(0.03, 0.07, 0.045);

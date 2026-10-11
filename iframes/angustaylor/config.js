@@ -30,22 +30,21 @@ export const SKIN_FALLBACK = 0xd9a07c;
 /**
  * The three characters. `face` is a baked portrait (soft-edged RGBA, see faces/README.md).
  * skin / hair colours were sampled from the portraits so the hands, neck and back of the head match.
- * noseX / noseY place the 3D nose bump on the head (-1..1 across the face; y up).
  */
 export const CHARACTERS = {
   ANGUS: {
     id: 'ANGUS', name: 'Angus Taylah', label: 'MP ANGUS',
-    face: 'faces/angus.webp', skin: 0xd78f74, hair: { color: 0x4a4638, style: 'short' }, noseX: 0.0, noseY: -0.3, headScale: 1.35,
+    face: 'faces/angus.webp', skin: 0xd78f74, hair: { color: 0x4a4638, style: 'short' }, headScale: 1.35,
     outfit: { pants: 0x2b2f3a, shirt: 0xc4dcf2, tie: 0x1f3f8f, flapTie: true, briefcase: true },
   },
   ALBO: {
     id: 'ALBO', name: 'PM Albo', label: 'PM ALBO',
-    face: 'faces/albo.webp', skin: 0xc7937e, hair: { color: 0x7d7d76, style: 'short' }, noseX: -0.07, noseY: -0.2, headScale: 1.45, scale: 1.15,
+    face: 'faces/albo.webp', skin: 0xc7937e, hair: { color: 0x7d7d76, style: 'short' }, headScale: 1.45, scale: 1.15,
     outfit: { suit: 0x3d4a5c, pants: 0x2a2f3a, tie: 0xc0392b, mic: true },
   },
   HANSON: {
     id: 'HANSON', name: 'Sen. Hanson', label: 'SEN. HANSON',
-    face: 'faces/hanson.webp', skin: 0xcf916a, hair: { color: 0x6e2612, style: 'bob' }, noseX: -0.1, noseY: -0.22, headScale: 1.45, scale: 1.15,
+    face: 'faces/hanson.webp', skin: 0xcf916a, hair: { color: 0x6e2612, style: 'bob' }, headScale: 1.45, scale: 1.15,
     outfit: { suit: 0x9b2f4f, pants: 0x4a2530, tie: 0x222222, mic: true },
   },
 };

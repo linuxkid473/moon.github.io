@@ -165,12 +165,12 @@ async function boot() {
     const m = acquire(kind === 'tax' ? T.tax : T.tape, laneX(lane), 0, SPAWN_Z);
     world.hazards.push({ kind, lane, mesh: m, pz: SPAWN_Z });
   }
-  /** A line of tax cuts; with arc, they rise and fall so you have to jump to collect them all. */
-  function spawnTaxCuts(lane, n, arc = false) {
-    for (let i = 0; i < n; i++) {
-      const cy = arc ? 1.0 + 2.4 * Math.sin((Math.PI * i) / (n - 1)) : 1.0;
-      const z = SPAWN_Z - i * (arc ? 2.6 : 2.2);
-      world.taxCuts.push({ lane, cy, mesh: acquire(T.taxCut, laneX(lane), cy, z), pz: z });
+  /** A tidy line of tax cuts: always five, evenly spaced, down the middle of one lane. */
+  const CUTS_PER_LINE = 5, CUT_SPACING = 2.4;
+  function spawnTaxCuts(lane) {
+    for (let i = 0; i < CUTS_PER_LINE; i++) {
+      const z = SPAWN_Z - i * CUT_SPACING;
+      world.taxCuts.push({ lane, cy: 1.0, mesh: acquire(T.taxCut, laneX(lane), 1.0, z), pz: z, bob: i * 0.7 });
     }
   }
   function spawnBoss() {
@@ -212,13 +212,12 @@ async function boot() {
   }
   /* Row patterns. Every pattern leaves at least one lane free of hazards, and harder ones unlock as the run goes on. */
   const PATTERNS = [
-    { w: () => 1.0, safe: true, run: (a) => spawnTaxCuts(a, 6) },
-    { w: () => 1.1, safe: true, run: (a, b) => { spawnHazard('tape', a); spawnTaxCuts(a, 5, true); spawnTaxCuts(b, 3); } },
-    { w: () => 1.2, run: (a, b) => { spawnHazard('tax', a); if (Math.random() < 0.7) spawnTaxCuts(b, 3); } },
-    { w: (d) => 0.6 + d, run: (a, b, c) => { spawnHazard('tax', a); spawnHazard('tax', b); spawnTaxCuts(c, 4); } },
-    { w: () => 1.2, run: (a, b) => { spawnHazard('tape', a); spawnTaxCuts(b, 3); } },
-    { w: (d) => d * 1.3, run: (a, b, c) => { spawnHazard('tape', a); spawnHazard('tape', b); spawnTaxCuts(c, 4); } },
-    { w: (d) => d * 1.1, run: (a, b, c) => { spawnHazard('tax', a); spawnHazard('tape', b); spawnTaxCuts(c, 4); } },
+    { w: () => 1.4, safe: true, run: (a) => spawnTaxCuts(a) },
+    { w: () => 1.2, run: (a, b) => { spawnHazard('tax', a); if (Math.random() < 0.7) spawnTaxCuts(b); } },
+    { w: (d) => 0.6 + d, run: (a, b, c) => { spawnHazard('tax', a); spawnHazard('tax', b); spawnTaxCuts(c); } },
+    { w: () => 1.3, run: (a, b) => { spawnHazard('tape', a); spawnTaxCuts(b); } },
+    { w: (d) => d * 1.3, run: (a, b, c) => { spawnHazard('tape', a); spawnHazard('tape', b); spawnTaxCuts(c); } },
+    { w: (d) => d * 1.1, run: (a, b, c) => { spawnHazard('tax', a); spawnHazard('tape', b); spawnTaxCuts(c); } },
   ];
   function spawnRow() {
     const d = clamp(S.time / 90, 0, 1);
@@ -340,7 +339,6 @@ async function boot() {
     S.glance = 0.7;
     W.coins++;
     if (S.taxCuts % 5 === 0) saveWallet();
-    fx.pickup(m.position.x, m.position.y, m.position.z);
     audio.sfx.coin(S.streak);
     if ([1, 10, 25, 50, 100, 150].includes(S.taxCuts)) news('tc' + S.taxCuts, true); else if (Math.random() < 0.2) news('taxcut');
     if (S.taxCuts === BUDGET_AT) { S.budgetT = BUDGET_SECS; popup('LIBERAL BUDGET!', '#7fb2ff'); audio.sfx.budget(); news('budget', true); }
@@ -816,7 +814,7 @@ async function boot() {
       for (const c of world.taxCuts) {
         c.pz = c.mesh.position.z;
         c.mesh.position.z += move;
-        c.mesh.rotation.y += dt * 4;
+        c.mesh.position.y = c.cy + Math.sin(S.time * 3 + c.bob) * 0.07;   // a gentle bob, always facing you
         const pull = S.budgetT > 0 && c.mesh.position.z > -45 ? 6 : c.mesh.position.z > -7 && c.mesh.position.z < 1 ? 3 : 0;   // the budget vacuums them in; otherwise a gentle assist when close
         if (pull) {
           if (Math.abs(c.mesh.position.x - player.position.x) < (S.budgetT > 0 ? 9 : 1.3)) c.mesh.position.x = damp(c.mesh.position.x, player.position.x, pull, dt);

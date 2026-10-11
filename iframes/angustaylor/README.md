@@ -31,18 +31,19 @@ because the game is loaded as ES modules.
 * Lane changes use a critically damped spring (no overshoot), and the same velocity drives the lean.
 * Collisions are swept along z, so nothing tunnels through you at high speed or on a slow frame.
 * The simulation runs in sub-steps of at most 1/90 s; a hit freezes the game for ~70 ms.
-* Rows are spaced by distance but never closer than `RUN.minRowGap` seconds, so speed can't make the game unfair.
+* Tax cuts always come in tidy lines of five. Rows are spaced by distance but never closer than `RUN.minRowGap` seconds, so speed can't make the game unfair.
   Every row pattern leaves a free lane; while a boss is on the road only pickups spawn.
 * Bosses show a red strip on the road and draw their arm back for 0.55 s before throwing, and don't change lane during it.
 
 ## The faces
 
 Each character's head is a vertex-coloured skull (hair colour on top and at the back, skin elsewhere)
-plus a front patch that carries the portrait, with a 3D nose bump, ears, and a rear hair shell.
+plus a near-flat face plate that carries the portrait (so the whole face shows, undistorted, instead of wrapping round a sphere), ears, and a rear hair shell.
+The plate is unlit, so the photo keeps its real colours under the red stage lighting.
 If a portrait fails to load the game falls back to a painted cartoon face.
 
-`faces/*.webp` are 256x312 RGBA: the head is cropped so its ellipse touches the image edges, and the alpha is
-feathered from 74% of the radius to the edge, which blends the photo into the skull and removes the photo background.
+`faces/*.webp` are 512x624 RGBA (upscaled 2x and sharpened from the 256px sources): the head is cropped so its ellipse touches the image edges, and the alpha is
+feathered from ~85% of the radius to the edge, which blends the photo into the skull and removes the photo background.
 
 | File | Source |
 | --- | --- |
@@ -50,7 +51,7 @@ feathered from 74% of the radius to the edge, which blends the photo into the sk
 | `hanson.webp`, `angus.webp` | The portraits that were embedded in the previous `angustaylor.html` |
 
 To change a face: replace the file with a similar crop, then adjust that character in `config.js`
-(`noseX` / `noseY` place the nose bump, `skin` / `hair` are the sampled colours for hands, neck and back of head).
+(`skin` / `hair` are the sampled colours for hands, neck and back of head). The sources are small, so a higher-resolution portrait will look noticeably crisper.
 
 ## Debugging
 
