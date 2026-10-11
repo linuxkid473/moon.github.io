@@ -142,9 +142,12 @@ export function createCosmetics({ scene, player, camera }) {
       g.fillStyle = '#ffffff';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.font = '900 150px system-ui, sans-serif';
-      g.fillText('TAX', w / 2, h * 0.36);
-      g.fillText('CUTS', w / 2, h * 0.62);
+      for (const [text, y] of [['FREE', 0.36], ['MARKETS', 0.62]]) {   // each line is shrunk until it fits inside the gold hem
+        let size = 150;
+        g.font = `900 ${size}px system-ui, sans-serif`;
+        while (size > 20 && g.measureText(text).width > w - 90) { size -= 4; g.font = `900 ${size}px system-ui, sans-serif`; }
+        g.fillText(text, w / 2, h * y);
+      }
     });
     // a trapezoid: narrow at the collar, fanning out towards the hem
     const CAPE_COLS = 13, CAPE_ROWS = 19, CAPE_TOP = 0.30, CAPE_BOT = 1.1, CAPE_H = 1.6, AERO = 0.07;
