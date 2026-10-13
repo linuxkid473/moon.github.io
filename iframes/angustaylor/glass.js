@@ -294,20 +294,21 @@ export function createGlass({ renderer, scene, camera, rain }) {
     render() {
       const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
       lastT = now;
-      const outdoors = settings.rain && S.mode !== 'menu';   // rain in the world: a light drizzle, a few splashes, the wet side floor
+      const fancy = level < 1;                                 // level 1 and up: no rain, no wet floor, no window drops
+      const outdoors = fancy && settings.rain && S.mode !== 'menu';   // rain in the world: a light drizzle, a few splashes, the wet side floor
       rain.setVisible(outdoors);
       if (outdoors) rain.step(dt, S.mode === 'playing' || S.mode === 'dying' ? S.speed : 3);
-      if (broken) { renderer.render(scene, camera); return; }
+      if (broken || level >= 2) { renderer.setRenderTarget(null); renderer.render(scene, camera); return; }   // level 2: no post-processing at all, the scene goes straight to the screen (still full resolution and anti-aliased)
       stormT += dt;
       const storm = 0;                // no opening downpour any more: the rain stays calm for the whole run
       rainClock += dt;
-      const drops = settings.glass && level < 2;
+      const drops = settings.glass && fancy;
       shared.uTime.value = rainClock;
       waterMat.uniforms.uStorm.value = storm;
       waterMat.uniforms.uLite.value = 1;   // the two finest bead layers are always skipped: they cost the most and show the least
       const u = compMat.uniforms;
       u.uRain.value = drops ? 1 : 0;           // drops on the window
-      u.uWet.value = settings.rain ? 1 : 0;    // the wet floor beside the road
+      u.uWet.value = fancy && settings.rain ? 1 : 0;    // the wet floor beside the road
       camera.getWorldDirection(fwd);
       u.uHor.value = 0.5 + Math.tan(Math.asin(Math.max(-1, Math.min(1, -fwd.y)))) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
       u.uScroll.value = Math.min(1e5, (S.dist || 0) / 3.66);   // a point on the road keeps its place as you run
@@ -322,7 +323,7 @@ export function createGlass({ renderer, scene, camera, rain }) {
     },
     /** Called when a run starts. (There is no opening downpour now; kept so callers don't change.) */
     storm() { stormT = 0; },
-    /** 0: everything. 1: lighter rain. 2: no drops on the window (the floor, bloom and vignette stay). Reversible. */
+    /** 0: everything. 1: no rain, wet floor or window drops (the sharpen and vignette stay). 2: no post-processing, the scene is drawn straight to the screen. Reversible. */
     setLevel(n) { level = n; },
     get level() { return level; },
     /** Build the shaders for both passes up front, so nothing hitches mid-run. */

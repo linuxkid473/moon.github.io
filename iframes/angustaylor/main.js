@@ -27,7 +27,7 @@ async function boot() {
   /* ---------- renderer, scene, camera, lights ---------- */
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: false, powerPreference: 'high-performance' });   // the scene is drawn to its own anti-aliased target (glass.js), so the screen itself needs no MSAA
+    renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });   // (used when the scene is drawn straight to the screen; the normal path anti-aliases its own target in glass.js)
   } catch {
     fatal('Your browser could not start 3D graphics (WebGL). Try updating it, or turn on hardware acceleration.');
     return;
@@ -941,36 +941,48 @@ async function boot() {
   addEventListener('resize', resize);
   resize();
 
-  /* Dynamic resolution: hold 60 fps by trading pixels for time.
-     Every ~0.75 s the average frame time is checked. Too slow: drop the render scale a step. Comfortably fast for a while:
-     probe a step back up, and if that makes it slow again, go back down and don't try that high for a while.
-     Below some scales the finer rain is switched off too (all of it is reversible). */
+  /* Holding 60 fps without turning the picture to mush.
+     Every ~0.75 s the average frame time is checked. If it is too slow the game gives things up in this order, and the
+     picture stays sharp for as long as possible:
+       stage 0  everything on
+       stage 1  no rain, wet floor, window drops or sweeping beams (cheap, the picture is as crisp as before)
+       stage 2  no post-processing: the scene is drawn straight to the screen at full resolution
+       stage 3  only now does the render scale come down, in small steps, and never below MIN_SCALE
+     After a long stretch of fast frames it tries to give things back, one step at a time, and if that is too slow
+     it puts them away again and leaves them alone for several minutes. */
   const noAdapt = /noadapt/.test(location.hash + location.search);
-  const MIN_SCALE = 0.6, SLOW_MS = 18.5, FAST_MS = 17.4;
-  let accT = 0, accN = 0, goodT = 0, ceiling = MAX_SCALE, ceilingUntil = 0, probing = false, settleT = 2.5;
+  const MIN_SCALE = Math.min(1, MAX_SCALE), SLOW_MS = 18.5, FAST_MS = 17.4, RESTORE_AFTER = 25;
+  let accT = 0, accN = 0, goodT = 0, stage = 0, settleT = 3, probingAt = 0, noRestoreUntil = 0;
+  function applyStage() {
+    glass.setLevel(Math.min(stage, 2));
+    worldFx.lowDetail(stage >= 1);
+  }
   function setScale(v) {
     renderScale = clamp(v, MIN_SCALE, MAX_SCALE);
     resize();
-    glass.setLevel(renderScale < 0.7 ? 2 : renderScale < 0.95 ? 1 : 0);   // lighter rain, then no window drops, as the scale falls
-    if (renderScale < 0.8) worldFx.lowDetail(true); else worldFx.lowDetail(false);
   }
   function adaptQuality(dt) {
     if (S.mode === 'loading' || S.mode === 'paused' || noAdapt || document.hidden) { accT = accN = 0; return; }
     if (dt > 0.2) { accT = accN = 0; settleT = Math.max(settleT, 0.6); return; }   // a hitch (tab switch, shader build): don't judge on it
-    if (settleT > 0) { settleT -= dt; return; }   // let a resize or a new run settle before measuring
+    if (settleT > 0) { settleT -= dt; return; }   // let a change settle before measuring
     accT += dt; accN++;
     if (accT < 0.75) return;
     const avg = (accT / accN) * 1000;
     accT = accN = 0;
+    const now = performance.now();
     if (avg > SLOW_MS) {
       goodT = 0;
-      if (probing) { ceiling = Math.max(MIN_SCALE, renderScale / 1.1); ceilingUntil = performance.now() + 40000; probing = false; }   // the step up was too much
-      if (renderScale > MIN_SCALE) { setScale(renderScale * (avg > 28 ? 0.8 : 0.9)); settleT = 1.0; }
+      if (probingAt && now - probingAt < 8000) noRestoreUntil = now + 300000;   // giving something back was too much: leave it off for a while
+      probingAt = 0;
+      if (stage < 2) { stage++; applyStage(); settleT = 2; }
+      else if (renderScale > MIN_SCALE + 0.01) { stage = 3; setScale(renderScale * 0.92); settleT = 2; }
     } else if (avg < FAST_MS) {
-      probing = false;
       goodT += 0.75;
-      if (performance.now() > ceilingUntil) ceiling = MAX_SCALE;
-      if (goodT > 6 && renderScale < ceiling - 0.01) { goodT = 0; setScale(Math.min(ceiling, renderScale * 1.1)); probing = true; settleT = 1.0; }
+      if (goodT > RESTORE_AFTER && now > noRestoreUntil && (stage > 0 || renderScale < MAX_SCALE - 0.01)) {
+        goodT = 0; probingAt = now; settleT = 2;
+        if (renderScale < MAX_SCALE - 0.01) setScale(Math.min(MAX_SCALE, renderScale * 1.1));
+        else { stage--; applyStage(); }
+      }
     }
   }
 
