@@ -1,4 +1,4 @@
-# Angus Taylah: Fighting Taxes
+# Angus Taylah: Fighting Taxes (New 3D Edition)
 
 A low-poly 3D lane runner (three.js r160, no build step). Dodge tax stacks, red tape and the bosses,
 grab the TAX CUT signs, buy cosmetics in the shop.
@@ -19,9 +19,19 @@ because the game is loaded as ES modules.
 | `fx.js` | Pooled particle system (pickups, landings, hits) |
 | `audio.js` | Web Audio synthesised effects and music (no audio files) |
 | `ticker.js` | Satirical news ticker and its headlines |
+| `glass.js` | The final pass: rain on the window, wet reflective floor, bloom and vignette (one shader) |
+| `rain.js` | Rain streaks and road splashes in the world |
 | `gfx.js` | Small three.js helpers |
 | `faces/` | The three baked face textures |
 | `vendor/` | three.js, self-hosted so the game has no CDN dependency |
+
+## What's new in v3 (merged with the rally-stage build)
+
+* **Graphics:** the scene is drawn to a texture and seen through rain-spattered glass with a wet floor that reflects the lights and LED screens, plus bloom and a vignette. Alley walls with lit windows, a huge LED wall and crowd at the horizon, scrolling edge lights, richer tax stacks, red-tape barriers and spinning coins, and more detailed people (creases, soles, pocket squares, watches). Static meshes are baked together to keep draw calls low.
+* **Gameplay:** golden SURPLUS cuts (worth 10), ribbon-cutting scissors (cut through hazards for 6 s), a consultant (takes the blame for one hit), streak call-outs, ranks and game-over titles, a camera that leans into lane changes.
+* **Settings:** "Rain on the window" and "Rain in the world & wet floor" can each be switched off. Add `?noadapt` to the URL to stop the game lowering quality automatically while you test.
+* **Quality ladder:** if the frame rate stays low the game steps down: lighter rain and 1x resolution, then the glass pass, beams and shadows off, then 0.75x resolution.
+* The menu stage no longer adds or removes lights or fog when switching to the road, which used to recompile every shader and cause a hitch.
 
 ## Physics and feel
 

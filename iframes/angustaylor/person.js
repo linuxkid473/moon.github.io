@@ -6,7 +6,7 @@
 //
 // Joint names (legL/legR/kneeL/kneeR, armL/armR/elbowL/elbowR, head) drive the run cycle and the
 // boss animation. The body faces +z.
-import { THREE, mat, mesh, box, canvasTex, labelTex, hexCss, clamp } from './gfx.js';
+import { THREE, mat, mesh, box, canvasTex, labelTex, hexCss, clamp, mergeTree } from './gfx.js';
 import { SKIN_FALLBACK } from './config.js';
 
 const HEAD_RX = 0.27, HEAD_RY = 0.33, HEAD_RZ = 0.25;   // head radii at scale 1
@@ -134,6 +134,9 @@ export function buildPerson(o) {
   const skin = pmat(o.skin ?? SKIN_FALLBACK, { roughness: 0.6 });
   const dark = pmat(0x1a1a1a, { roughness: 0.4 });
   const shoe = pmat(0x161616, { roughness: 0.35 });
+  const sole = pmat(0x0a0a0a, { roughness: 0.8 });
+  const pantsDark = pmat(new THREE.Color(out.pants).multiplyScalar(0.72).getHex(), { roughness: 0.6 });
+  const watchFace = pmat(0xc9b458, { roughness: 0.3 });
   const tieMat = out.tie ? pmat(out.tie, { roughness: 0.4 }) : null;
 
   const ell = (rx, ry, rz, material, x, y, z, seg = 6) => {
@@ -154,13 +157,16 @@ export function buildPerson(o) {
     const hip = new THREE.Group();
     hip.name = side < 0 ? 'legL' : 'legR';
     hip.position.set(side * 0.14, 1.02, 0);
-    hip.add(cyl(0.105, 0.082, 0.52, 4, pants, 0, -0.25, 0));
+    hip.add(cyl(0.115, 0.088, 0.52, 6, pants, 0, -0.25, 0));
+    hip.add(box(0.025, 0.42, 0.025, pantsDark, 0, -0.25, 0.1));   // a pressed crease down the front of the trousers
     const knee = new THREE.Group();
     knee.name = side < 0 ? 'kneeL' : 'kneeR';
     knee.position.set(0, -0.51, 0);
-    knee.add(ell(0.085, 0.085, 0.085, pants, 0, 0, 0, 4));
-    knee.add(cyl(0.08, 0.06, 0.5, 4, pants, 0, -0.25, 0));
-    knee.add(ell(0.1, 0.065, 0.19, shoe, 0, -0.51, 0.06, 5));
+    knee.add(ell(0.092, 0.092, 0.092, pants, 0, 0, 0, 5));
+    knee.add(cyl(0.088, 0.064, 0.5, 6, pants, 0, -0.25, 0));
+    knee.add(box(0.025, 0.4, 0.025, pantsDark, 0, -0.25, 0.085));
+    knee.add(ell(0.105, 0.06, 0.2, shoe, 0, -0.5, 0.07, 6));   // the shoe
+    knee.add(box(0.19, 0.035, 0.4, sole, 0, -0.545, 0.07));    // and its sole
     hip.add(knee);
     g.add(hip);
   }
@@ -187,6 +193,7 @@ export function buildPerson(o) {
       lap.rotation.z = -s * 0.22;
       g.add(lap);
     }
+    g.add(box(0.075, 0.06, 0.03, pmat(0xffffff, { roughness: 0.5 }), 0.14, 1.97, 0.15), box(0.032, 0.032, 0.03, watchFace, -0.13, 2.0, 0.152));   // a pocket square and a lapel pin
   } else {
     for (const s of [-1, 1]) {   // collar
       const c = box(0.11, 0.07, 0.05, shirt, s * 0.055, 2.22, 0.11);
@@ -225,16 +232,17 @@ export function buildPerson(o) {
     const shoulder = new THREE.Group();
     shoulder.name = side < 0 ? 'armL' : 'armR';
     shoulder.position.set(side * 0.37, 2.15, 0);
-    shoulder.add(cyl(0.075, 0.065, 0.56, 4, jacket, 0, -0.28, 0));
+    shoulder.add(cyl(0.09, 0.072, 0.56, 6, jacket, 0, -0.28, 0));
     const elbow = new THREE.Group();
     elbow.name = side < 0 ? 'elbowL' : 'elbowR';
     elbow.position.set(0, -0.57, 0);
-    elbow.add(ell(0.07, 0.07, 0.07, jacket, 0, 0, 0, 4));
-    elbow.add(cyl(0.065, 0.052, 0.5, 4, jacket, 0, -0.25, 0));
-    elbow.add(cyl(0.058, 0.058, 0.07, 4, out.suit ? shirt : jacket, 0, -0.5, 0));
+    elbow.add(ell(0.076, 0.076, 0.076, jacket, 0, 0, 0, 5));
+    elbow.add(cyl(0.07, 0.056, 0.5, 6, jacket, 0, -0.25, 0));
+    elbow.add(cyl(0.062, 0.062, 0.07, 6, out.suit ? shirt : jacket, 0, -0.5, 0));
     elbow.add(box(0.11, 0.12, 0.06, skin, 0, -0.58, 0));
     elbow.add(box(0.1, 0.1, 0.048, skin, 0, -0.68, 0.002));
     elbow.add(box(0.03, 0.09, 0.04, skin, -side * 0.065, -0.6, 0.03));
+    if (side < 0) elbow.add(box(0.14, 0.05, 0.14, dark, 0, -0.47, 0), box(0.06, 0.012, 0.06, watchFace, 0, -0.47, 0.072));   // a watch on the left wrist
     if (side > 0 && out.briefcase) elbow.add(box(0.34, 0.24, 0.1, pmat(0x6b3f1f, { roughness: 0.5 }), 0, -0.83, 0.06));
     if (side > 0 && out.mic) {
       elbow.add(box(0.05, 0.36, 0.05, dark, 0, -0.79, 0.06));
@@ -244,7 +252,7 @@ export function buildPerson(o) {
     g.add(shoulder);
   }
 
-  g.add(cyl(0.07, 0.08, 0.2, 4, skin, 0, 2.3, 0));   // neck
+  g.add(cyl(0.075, 0.085, 0.2, 6, skin, 0, 2.3, 0));   // neck
   g.add(buildHead(o, skin));
 
   const headTop = 2.26 + 2 * HEAD_RY * (o.headScale ?? 1);
@@ -257,6 +265,7 @@ export function buildPerson(o) {
     label.renderOrder = 10;
     g.add(label);
   }
+  mergeTree(g);   // a person used to be ~90 separate meshes; the rigid parts of each joint group are baked into a handful
   g.scale.setScalar(o.scale || 1);
   return g;
 }

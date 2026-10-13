@@ -381,7 +381,17 @@ export function createCosmetics({ scene, player, camera }) {
     if (!cape.visible) { cape.userData.reset(); return; }
     if (S.mode !== 'paused') cape.userData.step(dt, performance.now() / 1000);
   }
+  // the consultant's blame shield: a faint blue bubble round him while he has one
+  const shieldBubble = new THREE.Mesh(new THREE.SphereGeometry(1.5, 14, 10), new THREE.MeshBasicMaterial({ color: 0x4d8dff, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending }));
+  shieldBubble.position.y = 1.5;
+  shieldBubble.visible = false;
+  player.add(shieldBubble);
+
   function animateCosmetics(dt = 1 / 60) {
+    shieldBubble.visible = S.shield > 0;
+    shieldBubble.rotation.y += dt;
+    const heldScissors = costume.scissors[0];   // the scissors appear in his hand while the ribbon-cutting lasts
+    if (heldScissors) heldScissors.visible = !!W.equipped.scissors || S.cutT > 0;
     const t = performance.now() / 1000, b = costume.balloon[0];
     b.position.y = 3.7 + Math.sin(t * 2) * 0.08;
     b.rotation.z = Math.sin(t * 1.3) * 0.12;

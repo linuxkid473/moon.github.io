@@ -1,12 +1,14 @@
 // Angus Taylah: Fighting Taxes. Game loop, physics, spawning, UI.
-import { THREE, rand, pick, clamp, damp, loadImage, mesh } from './gfx.js';
-import { LANES, SPAWN_Z, DESPAWN_Z, PHYS, JUMP_V, RUN, BUDGET_AT, BUDGET_SECS, CHARACTERS, BOSS_ORDER, ITEMS } from './config.js';
+import { THREE, rand, pick, clamp, damp, loadImage, mesh, blobShadow } from './gfx.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, PHYS, JUMP_V, RUN, BUDGET_AT, BUDGET_SECS, CHARACTERS, BOSS_ORDER, ITEMS, POWER, STREAK_CALLS, PICKUP_POPS, RANKS, OVER_TITLES } from './config.js';
 import { S, W, saveWallet, saveBest, settings, saveSettings, helpSeen, markHelpSeen } from './state.js';
 import * as audio from './audio.js';
 import { buildPerson, applyPose, cyclePose, tossPose, AIR_POSE, FALL_POSE, MENU_POSE } from './person.js';
 import { createCosmetics } from './cosmetics.js';
 import { createWorld, STAGE } from './world.js';
 import { createFx } from './fx.js';
+import { createRain } from './rain.js';
+import { createGlass } from './glass.js';
 import { createTicker } from './ticker.js';
 
 const $ = (id) => document.getElementById(id);
@@ -25,15 +27,14 @@ async function boot() {
   /* ---------- renderer, scene, camera, lights ---------- */
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });
+    renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: false, powerPreference: 'high-performance' });   // the scene is drawn to its own anti-aliased target (glass.js), so the screen itself needs no MSAA
   } catch {
     fatal('Your browser could not start 3D graphics (WebGL). Try updating it, or turn on hardware acceleration.');
     return;
   }
-  let pixelRatioCap = Math.min(window.devicePixelRatio || 1, 1.5);
-  renderer.setPixelRatio(pixelRatioCap);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
+  const MAX_SCALE = Math.min(window.devicePixelRatio || 1, 1.5);
+  let renderScale = MAX_SCALE;   // pixels drawn per CSS pixel; the quality controller below moves this to hold 60 fps
+  renderer.setPixelRatio(renderScale);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(sky);
@@ -44,10 +45,6 @@ async function boot() {
   const sun = new THREE.DirectionalLight(0xffc4c8, 2.6);
   sun.position.set(-6, 14, 8);
   sun.target.position.set(0, 0, -6);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 60 });
-  sun.shadow.camera.updateProjectionMatrix();
   scene.add(sun, sun.target);
 
   /* ---------- portraits ---------- */
@@ -63,7 +60,7 @@ async function boot() {
   /* ---------- world, people, costumes ---------- */
   const worldFx = createWorld({ scene, camera });
   const { T } = worldFx;
-  for (const id of BOSS_ORDER) T[id] = buildPerson({ ...CHARACTERS[id], faceImage: faceImg[id] });
+  for (const id of BOSS_ORDER) { T[id] = buildPerson({ ...CHARACTERS[id], faceImage: faceImg[id] }); T[id].add(blobShadow(0.7, 0.55, 0.4)); }
   const bossHeight = Math.max(...BOSS_ORDER.map((id) => T[id].userData.headTop)) - 0.05;   // top of the head, for hit testing
 
   const player = buildPerson({ ...CHARACTERS.ANGUS, label: null, faceImage: faceImg.ANGUS });
@@ -72,12 +69,19 @@ async function boot() {
   const playerHead = player.getObjectByName('head');
   const cos = createCosmetics({ scene, player, camera });
   const fx = createFx(scene);
+  const rain = createRain(scene, worldFx.dotTex);
+  const glass = createGlass({ renderer, scene, camera, rain });
   cos.apply();
+  const TAPE_AXIS = new THREE.Vector3(0.5, 0.5, 0.7).normalize();   // the thrown tape corkscrews about a diagonal axis
+
+  const blob = new THREE.Mesh(new THREE.CircleGeometry(0.6, 16).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false }));   // a cheap soft shadow under him
+  blob.position.y = 0.035;
+  scene.add(blob);
 
   const warnMat = new THREE.MeshBasicMaterial({ color: 0xff2a3a, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
   const warnGeo = new THREE.PlaneGeometry(1.5, 1).rotateX(-Math.PI / 2);
 
-  const world = { hazards: [], taxCuts: [], bosses: [], shots: [], scenery: [] };
+  const world = { hazards: [], taxCuts: [], bosses: [], shots: [], scenery: [], powerups: [] };
   const reduceMotion = () => !settings.shake;
   const news = createTicker($('tkView'), matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -125,6 +129,9 @@ async function boot() {
     const b = S.budgetT > 0 ? Math.ceil(S.budgetT) : 0;
     setText('budget', b ? `LIBERAL BUDGET ${b}s` : '');
     $('budget').style.display = b ? 'block' : 'none';
+    const pw = [S.cutT > 0 ? `✂ RIBBON-CUTTING ${Math.ceil(S.cutT)}s` : '', S.shield > 0 ? '💼 BLAME SHIELD' : ''].filter(Boolean).join('  ·  ');
+    setText('powers', pw);
+    $('powers').style.display = pw ? 'block' : 'none';
   }
 
   let popCount = 0;
@@ -157,7 +164,7 @@ async function boot() {
     void f.offsetWidth;
     f.classList.add('on');
   }
-  const vibrate = (ms) => { if (settings.shake && navigator.vibrate) navigator.vibrate(ms); };
+  const vibrate = (ms) => { if (settings.shake && navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(ms); };   // browsers block it (and log an error) until the player has tapped or pressed a key
 
   /* ---------- spawning ---------- */
   const laneX = (lane) => LANES[lane];
@@ -168,10 +175,15 @@ async function boot() {
   /** A tidy line of tax cuts: always five, evenly spaced, down the middle of one lane. */
   const CUTS_PER_LINE = 5, CUT_SPACING = 2.4;
   function spawnTaxCuts(lane) {
+    const golden = Math.random() < POWER.goldChance;   // now and then the first one is a golden SURPLUS, worth ten
     for (let i = 0; i < CUTS_PER_LINE; i++) {
-      const z = SPAWN_Z - i * CUT_SPACING;
-      world.taxCuts.push({ lane, cy: 1.0, mesh: acquire(T.taxCut, laneX(lane), 1.0, z), pz: z, bob: i * 0.7 });
+      const z = SPAWN_Z - i * CUT_SPACING, gold = golden && i === 0;
+      world.taxCuts.push({ lane, cy: 1.0, gold, mesh: acquire(gold ? T.goldCut : T.taxCut, laneX(lane), 1.0, z), pz: z, bob: i * 0.7 });
     }
+  }
+  function spawnPowerup(kind, lane) {
+    const m = acquire(kind === 'scissors' ? T.scissorsPickup : T.consultant, laneX(lane), 1.1, SPAWN_Z);
+    world.powerups.push({ kind, lane, mesh: m, pz: SPAWN_Z });
   }
   function spawnBoss() {
     const kind = BOSS_ORDER[S.bossCount++ % BOSS_ORDER.length];
@@ -218,6 +230,7 @@ async function boot() {
     { w: () => 1.3, run: (a, b) => { spawnHazard('tape', a); spawnTaxCuts(b); } },
     { w: (d) => d * 1.3, run: (a, b, c) => { spawnHazard('tape', a); spawnHazard('tape', b); spawnTaxCuts(c); } },
     { w: (d) => d * 1.1, run: (a, b, c) => { spawnHazard('tax', a); spawnHazard('tape', b); spawnTaxCuts(c); } },
+    { w: () => POWER.powerupChance * 6, safe: true, run: (a, b) => { spawnPowerup(pick(['scissors', 'consultant']), a); spawnTaxCuts(b); } },   // a power-up in one lane, tax cuts in another
   ];
   function spawnRow() {
     const d = clamp(S.time / 90, 0, 1);
@@ -260,6 +273,7 @@ async function boot() {
     S.onGround = false;
     S.fastFalling = false;
     S.noSpin = true;   // no turn-to-camera spin during a toss
+    audio.sfx.tape();
   }
 
   const CAUSES = {
@@ -271,6 +285,14 @@ async function boot() {
 
   function hurt(cause = 'tape', by = '') {
     if (S.invuln > 0 || S.mode !== 'playing') return false;
+    if (S.shield > 0) {   // the consultant takes the blame instead
+      S.shield = 0; S.invuln = 1.0; S.shake = Math.max(S.shake, 0.4);
+      fx.burst(player.position.x, S.y + 1.5, 0, 0x7fb2ff, 22, { speed: 5, up: 3, life: 0.6 });
+      popup('CONSULTANT TAKES THE BLAME!', '#7fb2ff');
+      news('blame', true);
+      audio.sfx.blame();
+      return false;
+    }
     S.lives--;
     S.invuln = PHYS.hitInvuln;
     S.shake = 0.9;
@@ -298,9 +320,17 @@ async function boot() {
       Math.abs(px - x) < halfW + hw && y0 < yb && y1 > ya &&
       Math.max(z, pz) + halfD > -hd && Math.min(z, pz) - halfD < hd;
 
-    for (const h of world.hazards) {
-      const f = HAZ[h.kind], m = h.mesh;
-      if (hits(m.position.x, 0, f.h, m.position.z, h.pz, f.halfW, f.halfD)) hurt(h.kind);
+    for (let i = world.hazards.length - 1; i >= 0; i--) {
+      const h = world.hazards[i], f = HAZ[h.kind], m = h.mesh;
+      if (!hits(m.position.x, 0, f.h, m.position.z, h.pz, f.halfW, f.halfD)) continue;
+      if (S.cutT > 0) {   // the ceremonial scissors cut straight through it
+        fx.burst(m.position.x, 1.0, m.position.z, 0xff6a73, 16, { speed: 5, up: 3, life: 0.6 });
+        release(m);
+        world.hazards.splice(i, 1);
+        S.cutScore += POWER.scissorsBonus;
+        popup(pick(['SNIP!', 'RIBBON CUT!', 'CUT THROUGH!']), '#ff6a73');
+        audio.sfx.snip();
+      } else hurt(h.kind);
     }
     for (const b of world.bosses) {
       const m = b.mesh;
@@ -321,28 +351,48 @@ async function boot() {
     for (let i = world.taxCuts.length - 1; i >= 0; i--) {
       const c = world.taxCuts[i], m = c.mesh;
       if (hits(m.position.x, c.cy - 0.5, c.cy + 0.4, m.position.z, c.pz, 0.36, 0.12)) {
-        collectTaxCut(m);
+        collectTaxCut(m, c.gold);
         release(m);
         world.taxCuts.splice(i, 1);
       }
     }
+    for (let i = world.powerups.length - 1; i >= 0; i--) {
+      const pu = world.powerups[i], m = pu.mesh;
+      if (hits(m.position.x, 0.4, 1.9, m.position.z, pu.pz, 0.5, 0.3)) {
+        collectPowerup(pu.kind);
+        release(m);
+        world.powerups.splice(i, 1);
+      }
+    }
   }
 
-  function collectTaxCut(m) {
-    S.taxCuts++;
+  function collectPowerup(kind) {
+    S.glance = 0.7;
+    fx.burst(player.position.x, S.y + 1.5, 0, kind === 'scissors' ? 0xff6a73 : 0x7fb2ff, 22, { speed: 5, up: 3, life: 0.7 });
+    audio.sfx.power();
+    if (kind === 'scissors') { S.cutT = POWER.scissorsSecs; popup('RIBBON-CUTTING CEREMONY!', '#ff6a73'); news('scissors', true); }
+    else { S.shield = 1; popup('CONSULTANT HIRED!', '#7fb2ff'); news('consultant', true); }
+  }
+
+  function collectTaxCut(m, gold = false) {
+    const val = gold ? POWER.goldValue : 1, before = S.taxCuts;
+    S.taxCuts += val;
     S.streak++;
     S.bestStreak = Math.max(S.bestStreak, S.streak);
     const mult = Math.min(5, 1 + Math.floor(S.streak / 10));
     if (mult > S.mult) popup(`x${mult} STREAK!`, '#ffd34d');
     S.mult = mult;
-    S.cutScore += 10 * mult;
+    S.cutScore += 10 * mult * val;
     S.glance = 0.7;
-    W.coins++;
-    if (S.taxCuts % 5 === 0) saveWallet();
-    audio.sfx.coin(S.streak);
-    if ([1, 10, 25, 50, 100, 150].includes(S.taxCuts)) news('tc' + S.taxCuts, true); else if (Math.random() < 0.2) news('taxcut');
-    if (S.taxCuts === BUDGET_AT) { S.budgetT = BUDGET_SECS; popup('LIBERAL BUDGET!', '#7fb2ff'); audio.sfx.budget(); news('budget', true); }
-    popup('TAX CUT!', '#7CFC9A');
+    W.coins += val;
+    if (Math.floor(before / 5) !== Math.floor(S.taxCuts / 5)) saveWallet();
+    fx.burst(player.position.x, S.y + 1.5, 0, gold ? 0xffd34d : 0x7cfc9a, gold ? 26 : 9, { speed: 4, up: 3, life: 0.55 });
+    for (const ms of [1, 10, 25, 50, 100, 150]) if (before < ms && S.taxCuts >= ms) news('tc' + ms, true);
+    if (before < BUDGET_AT && S.taxCuts >= BUDGET_AT) { S.budgetT = BUDGET_SECS; popup('LIBERAL BUDGET!', '#7fb2ff'); audio.sfx.budget(); news('budget', true); }
+    const call = STREAK_CALLS[S.streak];
+    if (call) { popup(call, '#ffd34d'); news('streak', true); audio.sfx.fanfare(); }
+    else if (gold) { popup('SURPLUS FOUND! +10', '#ffd34d'); news('gold', true); audio.sfx.gold(); }
+    else { popup(pick(PICKUP_POPS), '#7CFC9A'); audio.sfx.coin(S.streak); if (Math.random() < 0.2) news('taxcut'); }
   }
 
   function prune() {
@@ -388,7 +438,7 @@ async function boot() {
     Object.assign(S, {
       time: 0, speed: RUN.startSpeed, dist: 0, taxCuts: 0, cutScore: 0, streak: 0, bestStreak: 0, mult: 1, lives: 3,
       lane: 1, vx: 0, y: 0, vy: 0, onGround: true, airT: 0, fastFalling: false, invuln: 1.0, shake: 0, hitStop: 0, slow: 1,
-      rowDist: 22, sceneryDist: 0, nextBossDist: 180, bossCount: 0, thrown: 0, tapeLeft: 0, noSpin: false, budgetT: 0,
+      rowDist: 22, sceneryDist: 0, nextBossDist: 180, bossCount: 0, thrown: 0, tapeLeft: 0, noSpin: false, budgetT: 0, cutT: 0, shield: 0,
       jumpBufferT: 0, laneBuffer: 0, laneBufferDir: 0, hitBy: '', hitById: '', newBest: false, dyingT: 0, apex: 0,
     });
     player.position.set(0, 0, 0);
@@ -399,6 +449,7 @@ async function boot() {
     audio.music.start();
     audio.music.setIntensity(1);
     news('start', true);
+    glass.storm();   // the rain comes down hard for the first few seconds
     if (!helpSeen()) { $('hint').classList.add('show'); setTimeout(() => $('hint').classList.remove('show'), 6500); }
   }
 
@@ -420,7 +471,9 @@ async function boot() {
     $('hint').classList.remove('show');
     $('finalScore').textContent = String(score);
     $('overStats').textContent = `${Math.floor(S.dist)} m  ·  ${S.taxCuts} tax cuts  ·  best streak ${S.bestStreak}`;
-    $('overMsg').textContent = S.newBest ? 'New best! Angus is not paying this.' : `Best ${S.best}`;
+    const rank = RANKS.filter(([min]) => score >= min).pop()[1];
+    $('overTitle').textContent = pick(OVER_TITLES);
+    $('overMsg').textContent = `${S.newBest ? 'New best! Angus is not paying this.' : `Best ${S.best}`}  ·  Rank: ${rank}`;
     $('overMsg').classList.toggle('best', S.newBest);
     const by = $('overBy');
     by.textContent = S.hitBy || 'Audited!';
@@ -614,12 +667,14 @@ async function boot() {
     $('optSfx').checked = settings.sfx;
     $('optMusic').checked = settings.music;
     $('optShake').checked = settings.shake;
+    $('optGlass').checked = settings.glass;
+    $('optRain').checked = settings.rain;
     $('muteBtn').textContent = settings.sfx || settings.music ? '🔊' : '🔇';
     $('muteBtn').setAttribute('aria-label', settings.sfx || settings.music ? 'Mute' : 'Unmute');
     document.body.classList.toggle('calm', !settings.shake);
     saveSettings();
   }
-  for (const [id, key] of [['optSfx', 'sfx'], ['optMusic', 'music'], ['optShake', 'shake']]) $(id).addEventListener('change', (e) => { settings[key] = e.target.checked; applySettings(); });
+  for (const [id, key] of [['optSfx', 'sfx'], ['optMusic', 'music'], ['optShake', 'shake'], ['optGlass', 'glass'], ['optRain', 'rain']]) $(id).addEventListener('change', (e) => { settings[key] = e.target.checked; applySettings(); });
   const openSettings = (from) => () => { settingsFrom = from; show(from, false); show('settings', true); $('settingsClose').focus({ preventScroll: true }); };
   press('settingsBtn', openSettings('menu'));
   press('settingsBtn2', openSettings('pause'));
@@ -713,6 +768,10 @@ async function boot() {
     const a = 1 - Math.exp(-rate * dt);
     for (let i = 0; i < 12; i++) S.pose[i] += (tgt[i] - S.pose[i]) * a;
     applyPose(player, S.pose);
+    blob.position.x = player.position.x;
+    blob.position.z = player.position.z;
+    blob.visible = S.mode !== 'menu';
+    blob.material.opacity = 0.4 / (1 + 0.8 * S.y);   // fades as he jumps
   }
 
   function animateBoss(b, dt) {
@@ -728,8 +787,8 @@ async function boot() {
     for (let i = 0; i < 12; i++) b.pose[i] += (tgt[i] - b.pose[i]) * bk;
     applyPose(b.mesh, b.pose);
     // a taunting head bob
-    const head = b.mesh.getObjectByName('head');
-    if (head) head.rotation.z = Math.sin(b.anim * 3.1) * 0.08;
+    b.head ??= b.mesh.getObjectByName('head');
+    if (b.head) b.head.rotation.z = Math.sin(b.anim * 3.1) * 0.08;
   }
 
   function updateBoss(b, dt, move) {
@@ -760,8 +819,8 @@ async function boot() {
     b.anim += dt;
     animateBoss(b, dt);
 
-    const label = m.getObjectByName('label');
-    if (label) label.visible = m.position.z < -3;   // the name tag is huge up close
+    b.label ??= m.getObjectByName('label');
+    if (b.label) b.label.visible = m.position.z < -3;   // the name tag is huge up close
 
     // the red strip on the road shows the lane the throw is coming down
     const wz0 = m.position.z + 1.2, wz1 = 2;
@@ -780,8 +839,9 @@ async function boot() {
     const ph = clamp(S.y * 0.3, 0, 1.5);   // the camera rises with every jump so his head never leaves the screen
     camera.position.set(camX + rand(-1, 1) * sh * 0.3, 4.4 + ph + rand(-1, 1) * sh * 0.2, 8.2);
     camera.lookAt(camX * 0.6, 1.5 + ph * 0.7, -6);
+    if (!reduceMotion() && S.mode === 'playing') camera.rotateZ(-(player.position.x - camX * 2) * 0.012);   // the camera leans into lane changes
     S.shake *= Math.exp(-8 * dt);
-    const target = reduceMotion() ? 0 : clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1) * 7;   // a wider lens as you speed up
+    const target = reduceMotion() ? 0 : clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1) * 7 + (S.budgetT > 0 ? 3 : 0) + (S.cutT > 0 ? 2 : 0);   // a wider lens as you speed up and during power-ups
     fovKick = damp(fovKick, S.mode === 'playing' ? target : 0, 2, dt);
     const base = innerWidth / innerHeight < 0.9 ? 78 : 62;
     if (Math.abs(camera.fov - (base + fovKick)) > 0.01) { camera.fov = base + fovKick; camera.updateProjectionMatrix(); }
@@ -814,7 +874,8 @@ async function boot() {
       for (const c of world.taxCuts) {
         c.pz = c.mesh.position.z;
         c.mesh.position.z += move;
-        c.mesh.position.y = c.cy + Math.sin(S.time * 3 + c.bob) * 0.07;   // a gentle bob, always facing you
+        c.mesh.position.y = c.cy + Math.sin(S.time * 3 + c.bob) * 0.07;   // a gentle bob
+        if (!c.gold) c.mesh.rotation.y += dt * 4;   // coins spin; the golden SURPLUS sign always faces you
         const pull = S.budgetT > 0 && c.mesh.position.z > -45 ? 6 : c.mesh.position.z > -7 && c.mesh.position.z < 1 ? 3 : 0;   // the budget vacuums them in; otherwise a gentle assist when close
         if (pull) {
           if (Math.abs(c.mesh.position.x - player.position.x) < (S.budgetT > 0 ? 9 : 1.3)) c.mesh.position.x = damp(c.mesh.position.x, player.position.x, pull, dt);
@@ -822,8 +883,9 @@ async function boot() {
         }
       }
       for (const s of world.scenery) s.mesh.position.z += move;
+      for (const pu of world.powerups) { pu.pz = pu.mesh.position.z; pu.mesh.position.z += move; pu.mesh.rotation.y += dt * 2.5; pu.mesh.position.y = 1.1 + Math.sin(S.time * 3.3 + pu.mesh.position.x) * 0.12; }
       for (const b of world.bosses) updateBoss(b, dt, move);
-      for (const sh of world.shots) { sh.pz = sh.mesh.position.z; sh.mesh.position.z += (S.speed + 16) * dt; sh.mesh.rotation.y += dt * 6; }
+      for (const sh of world.shots) { sh.pz = sh.mesh.position.z; sh.mesh.position.z += (S.speed + 16) * dt; sh.mesh.rotateOnAxis(TAPE_AXIS, dt * 13); }   // the thrown tape spins, diagonally
       worldFx.scroll(move, performance.now() / 1000, S.dist, dt);
       fx.update(dt, move);
 
@@ -838,6 +900,7 @@ async function boot() {
       }
       S.invuln = Math.max(0, S.invuln - dt);
       S.budgetT = S.taxCuts === 0 ? 0 : Math.max(0, S.budgetT - dt);
+      S.cutT = Math.max(0, S.cutT - dt);
       S.jumpBufferT = Math.max(0, S.jumpBufferT - dt);
       if (S.thrown <= 0 && S.laneBuffer > 0) {   // a lane change pressed during the toss
         S.laneBuffer -= dt;
@@ -868,8 +931,9 @@ async function boot() {
   /* ---------- sizing, adaptive quality, main loop ---------- */
   function resize() {
     const w = innerWidth, h = innerHeight;
-    renderer.setPixelRatio(pixelRatioCap);
+    renderer.setPixelRatio(renderScale);
     renderer.setSize(w, h, false);
+    glass.resize(w, h);
     camera.aspect = w / h;
     camera.fov = w / h < 0.9 ? 78 : 62;
     camera.updateProjectionMatrix();
@@ -877,18 +941,36 @@ async function boot() {
   addEventListener('resize', resize);
   resize();
 
-  // If the frame rate stays low, drop the resolution; if it is still low, turn the shadows off.
-  let slowT = 0, quality = 0;
+  /* Dynamic resolution: hold 60 fps by trading pixels for time.
+     Every ~0.75 s the average frame time is checked. Too slow: drop the render scale a step. Comfortably fast for a while:
+     probe a step back up, and if that makes it slow again, go back down and don't try that high for a while.
+     Below some scales the finer rain is switched off too (all of it is reversible). */
+  const noAdapt = /noadapt/.test(location.hash + location.search);
+  const MIN_SCALE = 0.6, SLOW_MS = 18.5, FAST_MS = 17.4;
+  let accT = 0, accN = 0, goodT = 0, ceiling = MAX_SCALE, ceilingUntil = 0, probing = false, settleT = 2.5;
+  function setScale(v) {
+    renderScale = clamp(v, MIN_SCALE, MAX_SCALE);
+    resize();
+    glass.setLevel(renderScale < 0.7 ? 2 : renderScale < 0.95 ? 1 : 0);   // lighter rain, then no window drops, as the scale falls
+    if (renderScale < 0.8) worldFx.lowDetail(true); else worldFx.lowDetail(false);
+  }
   function adaptQuality(dt) {
-    if (S.mode === 'loading') return;
-    slowT = dt > 0.028 ? slowT + dt : Math.max(0, slowT - dt * 2);
-    if (slowT < 2 || quality >= 3) return;
-    quality++;
-    slowT = 0;
-    if (quality < 3) { pixelRatioCap = quality === 1 ? Math.min(pixelRatioCap, 1) : 0.75; resize(); }
-    else {
-      renderer.shadowMap.enabled = false;
-      scene.traverse((o) => { if (o.material) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true; });
+    if (S.mode === 'loading' || S.mode === 'paused' || noAdapt || document.hidden) { accT = accN = 0; return; }
+    if (dt > 0.2) { accT = accN = 0; settleT = Math.max(settleT, 0.6); return; }   // a hitch (tab switch, shader build): don't judge on it
+    if (settleT > 0) { settleT -= dt; return; }   // let a resize or a new run settle before measuring
+    accT += dt; accN++;
+    if (accT < 0.75) return;
+    const avg = (accT / accN) * 1000;
+    accT = accN = 0;
+    if (avg > SLOW_MS) {
+      goodT = 0;
+      if (probing) { ceiling = Math.max(MIN_SCALE, renderScale / 1.1); ceilingUntil = performance.now() + 40000; probing = false; }   // the step up was too much
+      if (renderScale > MIN_SCALE) { setScale(renderScale * (avg > 28 ? 0.8 : 0.9)); settleT = 1.0; }
+    } else if (avg < FAST_MS) {
+      probing = false;
+      goodT += 0.75;
+      if (performance.now() > ceilingUntil) ceiling = MAX_SCALE;
+      if (goodT > 6 && renderScale < ceiling - 0.01) { goodT = 0; setScale(Math.min(ceiling, renderScale * 1.1)); probing = true; settleT = 1.0; }
     }
   }
 
@@ -897,7 +979,7 @@ async function boot() {
     requestAnimationFrame(frame);
     const raw = Math.min((now - last) / 1000, 0.1);
     last = now;
-    if (window.__game?.manual) { renderer.render(scene, camera); return; }   // tests drive the simulation by hand
+    if (window.__game?.manual) { glass.render(); return; }   // tests drive the simulation by hand
     adaptQuality(raw);
 
     let dt = raw;
@@ -916,7 +998,33 @@ async function boot() {
     if (S.mode !== 'paused') cos.stepCape(dt);
     updateCamera(raw);
     updateHud();
-    renderer.render(scene, camera);
+    glass.render();
+  }
+
+  /** Draw one of every spawnable thing in front of the camera for a moment. GPU uploads and shader links otherwise happen the first time something appears, which shows up as a stutter. */
+  function prewarm() {
+    worldFx.stageMode(false);
+    camera.position.set(0, 4.4, 8.2);
+    camera.lookAt(0, 1.5, -6);
+    camera.updateMatrixWorld(true);
+    const temp = [];
+    let x = -3;
+    for (const tpl of Object.values(T).flat()) {
+      const m = tpl.clone(true);
+      m.traverse((o) => { o.frustumCulled = false; });
+      m.position.set(x, 0.5, -6);
+      x += 0.4;
+      scene.add(m);
+      temp.push(m);
+    }
+    const warn = new THREE.Mesh(warnGeo, warnMat);
+    warn.position.set(0, 0.05, -4);
+    scene.add(warn);
+    temp.push(warn);
+    glass.render();
+    glass.render();
+    for (const m of temp) scene.remove(m);
+    worldFx.stageMode(true);
   }
 
   /* ---------- lifecycle: pause when the tab is hidden, survive a lost GL context ---------- */
@@ -927,9 +1035,11 @@ async function boot() {
   $('game').addEventListener('webglcontextlost', (e) => { e.preventDefault(); pauseGame(); });
 
   if (/debug/.test(location.hash + location.search)) {
-    window.__game = { S, W, world, player, T, scene, camera, renderer, fx, startGame, spawnBoss, spawnHazard, spawnTaxCuts, jump, changeLane, fastFall, pauseGame, resumeGame, hurt, gameOver, clearWorld, backToMenu, bossHeight, collide, update, updateCamera, spawnRow, cos, manual: false };
+    window.__game = { settings, worldFx, glass, rain, spawnPowerup, collectPowerup, collectTaxCut, popup, S, W, world, player, T, scene, camera, renderer, fx, startGame, spawnBoss, spawnHazard, spawnTaxCuts, jump, changeLane, fastFall, pauseGame, resumeGame, hurt, gameOver, clearWorld, backToMenu, bossHeight, collide, update, updateCamera, spawnRow, cos, manual: false };
   }
 
+  glass.precompile();   // build every shader up front, so nothing hitches mid-run
+  prewarm();            // and upload every geometry and texture, by drawing one of everything once
   $('loadBar').style.width = '100%';
   $('loader').classList.add('hidden');
   show('menu', true);

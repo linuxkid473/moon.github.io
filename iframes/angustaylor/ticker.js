@@ -48,6 +48,27 @@ export const HEADLINES = {
     "Government front bench enters the road; Opposition 'noting the size of the entourage'",
     "Senior figure steps onto the course; red tape reportedly 'on standby'",
   ],
+  streak: [
+    "STREAK: Runner cuts taxes so often the Treasury has stopped returning calls",
+    "Deregulation streak continues; the Government is 'monitoring the streak'",
+    "Runner on a roll; red tape reportedly 'scared of him'",
+  ],
+  gold: [
+    "SURPLUS FOUND: Treasury says it 'was always there', just not in the budget papers",
+    "Golden tax cut discovered behind the couch; economists demand a recount",
+  ],
+  scissors: [
+    "Ribbon-cutting ceremony begins; red tape 'regrets everything'",
+    "Giant scissors acquired; the Government calls it 'just a trim'",
+  ],
+  consultant: [
+    "Consultant hired; has already billed for the hiring",
+    "Government engages consultant to find out what consultants do",
+  ],
+  blame: [
+    "Consultant takes the blame, invoices $4 million for the inconvenience",
+    "Blame successfully outsourced; invoice to follow",
+  ],
   hitTape: [
     "Runner snared by red tape; Opposition vows to cut it, Government vows to review it",
     "Red tape claims another victim; Government says it's cutting red tape by adding a form to cut red tape",
@@ -113,12 +134,17 @@ export function createTicker(view, reduceMotion = false) {
     el.addEventListener('animationend', () => el.remove());
   }
 
-  function loop() {
-    const vw = view.clientWidth;
-    if (vw > 0 && !document.hidden) {
-      const tail = view.lastElementChild;
-      if (!tail || tail.getBoundingClientRect().right <= view.getBoundingClientRect().right - TK_GAP) spawn(vw);
-      while (view.children.length > 6) view.firstElementChild.remove();   // safety net
+  let nextCheck = 0;
+  function loop(now) {
+    // measuring the belt forces a layout, so do it a few times a second rather than every frame
+    if (now >= nextCheck && !document.hidden) {
+      nextCheck = now + 120;
+      const vw = view.clientWidth;
+      if (vw > 0) {
+        const tail = view.lastElementChild;
+        if (!tail || tail.getBoundingClientRect().right <= view.getBoundingClientRect().right - TK_GAP) spawn(vw);
+        while (view.children.length > 6) view.firstElementChild.remove();   // safety net
+      }
     }
     requestAnimationFrame(loop);
   }

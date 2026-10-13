@@ -100,6 +100,12 @@ export const sfx = {
   budget() { [0, 4, 7, 12, 16].forEach((n, i) => tone({ f0: hz(72 + n), dur: 0.25, type: 'triangle', vol: 0.16, at: i * 0.07 })); },
   buy() { tone({ f0: hz(76), dur: 0.1, type: 'triangle', vol: 0.18 }); tone({ f0: hz(83), dur: 0.2, type: 'triangle', vol: 0.18, at: 0.08 }); },
   over() { [0, -3, -7, -12].forEach((n, i) => tone({ f0: hz(69 + n), dur: 0.35, type: 'triangle', vol: 0.22, at: i * 0.16 })); },
+  gold() { [67, 71, 74, 79].forEach((m, i) => tone({ f0: hz(m + 12), dur: 0.14, type: 'triangle', vol: 0.2, at: i * 0.07 })); },
+  power() { [72, 76, 79, 84].forEach((m, i) => tone({ f0: hz(m), dur: 0.11, type: 'square', vol: 0.09, at: i * 0.06, lp: 4000 })); },
+  snip() { tone({ f0: 1800, dur: 0.05, type: 'square', vol: 0.1, lp: 6000 }); tone({ f0: 1400, dur: 0.06, type: 'square', vol: 0.1, at: 0.07, lp: 6000 }); },
+  fanfare() { [72, 72, 76, 79, 84].forEach((m, i) => tone({ f0: hz(m), dur: 0.17, type: 'sawtooth', vol: 0.1, at: i * 0.11, lp: 3500 })); },
+  tape() { tone({ f0: 700, f1: 160, dur: 0.28, type: 'triangle', vol: 0.12 }); },
+  blame() { tone({ f0: 440, f1: 880, dur: 0.12, type: 'triangle', vol: 0.18 }); tone({ f0: 330, f1: 220, dur: 0.3, type: 'sawtooth', vol: 0.1, at: 0.1, lp: 1500 }); },
   best() { [0, 4, 7, 12, 7, 12].forEach((n, i) => tone({ f0: hz(72 + n), dur: 0.2, type: 'square', vol: 0.1, at: i * 0.09, lp: 4000 })); },
 };
 
