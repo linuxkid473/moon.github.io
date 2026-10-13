@@ -147,8 +147,7 @@ const WATER_FRAG = `
       if (uLite < 0.5) statics(p, 45.0, 71.0, 0.88, 0.22, 0.55, 0.0, w);   // small but clearly visible drops, spread over the whole screen
       statics(p, 28.0, 13.0, 0.965, 0.15, 0.42, 0.22, w);                   // the odd medium drop
       statics(p, 11.0, 29.0, 0.996, 0.14, 0.30, 0.22, w);                   // a rare big one
-      slide(p, 9.0, 0.0, 0.03, 1.0, 0.14, w);                               // a few drops slowly running down
-      slide(p, 15.0, 40.0, 0.05, 0.6, 0.06, w);                              // smaller ones, now and then
+      // (no running drops with wiggly tails any more: only round drops that sit on the glass)
       // how the water bends the picture here: a drop's lens, or the thin sideways bend along a wet streak
       vec2 g = w.hgt > 0.0 ? w.grad : vec2(w.tg, 0.0);
       // packed into two 8-bit targets (neutral value 0.5 for the signed ones, so blending towards "no water" fades smoothly)
@@ -225,13 +224,14 @@ const COMP_FRAG = `
           float rph = fract(uTime * 0.3 + h21(rc + vec2(3.0, 5.0)));
           float ring = sin((rr - rph * 0.5) * 60.0) * exp(-abs(rr - rph * 0.5) * 14.0) * (1.0 - rph) * puddle;
           float fres = mix(0.9, 0.25, clamp(dy / uHor, 0.0, 1.0));
+          // a clean mirror image of what stands above the floor: a few taps very close together, so the reflection stays sharp, not streaked
           vec3 refl = vec3(0.0);
-          for (int k = 0; k < 6; k++) {
-            float dd = (float(k) + 0.5) / 6.0;
-            vec2 ruv = vec2(vUv.x + ring * 0.003 * (0.5 + dd) + (vnoise(vec2(fl.x * 6.0 + float(k), fl.y * 0.2)) - 0.5) * 0.0012, vUv.y + dy * (0.8 + 2.4 * dd));
-            refl += max(textureLod(tScene, clamp(ruv, 0.001, 0.999), 0.0).rgb - 0.18, 0.0) * (1.0 - dd * 0.5);
+          for (int k = 0; k < 3; k++) {
+            float dd = float(k) / 2.0;
+            vec2 ruv = vec2(vUv.x, vUv.y + dy * (1.8 + 0.3 * dd));
+            refl += max(textureLod(tScene, clamp(ruv, 0.001, 0.999), 0.0).rgb - 0.18, 0.0);
           }
-          col = col * (1.0 - puddle * 0.35 * floorM) + refl / 6.0 * 3.0 * wetness * fres * floorM * 0.85;
+          col = col * (1.0 - puddle * 0.35 * floorM) + refl / 3.0 * 2.2 * wetness * fres * floorM * 0.8;
         }
       }
       // a light sharpen (unsharp mask), so edges and lettering stay crisp
@@ -267,7 +267,7 @@ export function createGlass({ renderer, scene, camera, rain }) {
   const compMat = new THREE.ShaderMaterial({
     uniforms: {
       ...shared, tScene: { value: sceneRT.texture }, tWaterA: { value: waterRT.texture[0] }, tWaterB: { value: waterRT.texture[1] },
-      uRain: { value: 1 }, uHor: { value: 0.67 }, uScroll: { value: 0 }, uWet: { value: 1 }, uSharp: { value: 0.5 }, uDark: { value: 0.16 },
+      uRain: { value: 1 }, uHor: { value: 0.67 }, uScroll: { value: 0 }, uWet: { value: 1 }, uSharp: { value: 0.7 }, uDark: { value: 0.16 },
     },
     vertexShader: VERT, fragmentShader: COMP_FRAG, depthTest: false, depthWrite: false,
   });

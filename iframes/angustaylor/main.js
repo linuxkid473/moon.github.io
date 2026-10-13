@@ -38,7 +38,7 @@ async function boot() {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(sky);
-  scene.fog = new THREE.Fog(sky, 45, 130);   // a light haze only: the far end of the road stays crisp
+  scene.fog = new THREE.Fog(sky, 75, 135);   // a light haze only: the far end of the road stays crisp
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 300);
 
   scene.add(new THREE.HemisphereLight(0x8fb4ff, 0x2a1a3a, 1.25));

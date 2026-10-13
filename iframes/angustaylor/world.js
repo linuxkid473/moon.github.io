@@ -146,7 +146,7 @@ export function createWorld({ scene, camera }) {
     tree.add(box(0.25, 3.6, 0.25, mat(0x20232b), 0, 1.8, 0));
     tree.add(mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.6, 8), mat(0x15181f)), mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 8), ledRed));
     tree.children[1].position.y = 3.9; tree.children[2].position.y = 4.2;
-    const spot = new THREE.Mesh(new THREE.ConeGeometry(0.9, 10, 10, 1, true).translate(0, 5, 0), new THREE.MeshBasicMaterial({ color: 0x2a6aff, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    const spot = new THREE.Mesh(new THREE.ConeGeometry(0.9, 10, 10, 1, true).translate(0, 5, 0), new THREE.MeshBasicMaterial({ color: 0x2a6aff, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     spot.position.y = 4.2; spot.rotation.z = 0.25;
     tree.add(spot);
     T.tree = tree;
@@ -614,7 +614,7 @@ export function createWorld({ scene, camera }) {
       for (const b of a.userData.beams) {
         b.pivot.rotation.z = Math.sin(tt * 0.5 + b.phase) * 0.5;
         b.pivot.rotation.x = Math.sin(tt * 0.38 + b.phase * 1.6) * 0.35;
-        b.mat.opacity = (0.08 + 0.07 * (Math.sin(tt * 1.1 + b.phase * 2) * 0.5 + 0.5)) * near;
+        b.mat.opacity = (0.05 + 0.04 * (Math.sin(tt * 1.1 + b.phase * 2) * 0.5 + 0.5)) * near;
         b.pool.visible = !lowDetailOn && near > 0.05;
         b.pool.position.set(b.x + Math.tan(b.pivot.rotation.z) * 6.7, 0.04, -Math.tan(b.pivot.rotation.x) * 6.7);
       }
