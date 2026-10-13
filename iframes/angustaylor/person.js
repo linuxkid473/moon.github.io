@@ -82,7 +82,7 @@ function faceMaterial(o) {
   if (o.faceImage) {
     map = new THREE.Texture(o.faceImage);
     map.colorSpace = THREE.SRGBColorSpace;
-    map.anisotropy = 8;
+    map.anisotropy = 16;
     map.needsUpdate = true;
   } else {
     map = paintedFace(o.skin ?? SKIN_FALLBACK, o.hair?.color ?? 0x3b2a1f);

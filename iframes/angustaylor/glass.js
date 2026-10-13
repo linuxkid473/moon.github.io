@@ -1,5 +1,5 @@
 // The final passes: the game is drawn to a texture and then seen through a pane of fogged, rain-spattered glass
-// with a wet reflective floor, a soft bloom and a vignette.
+// with a wet reflective floor, a vignette (no bloom or blur: the picture stays sharp).
 //
 // Two passes keep it cheap: the water field (where every drop is and how it bends the picture) is computed at
 // a quarter of the pixels into two small 8-bit targets, then the full-resolution pass just reads it, bends the
@@ -147,9 +147,8 @@ const WATER_FRAG = `
       if (uLite < 0.5) statics(p, 45.0, 71.0, 0.88, 0.22, 0.55, 0.0, w);   // small but clearly visible drops, spread over the whole screen
       statics(p, 28.0, 13.0, 0.965, 0.15, 0.42, 0.22, w);                   // the odd medium drop
       statics(p, 11.0, 29.0, 0.996, 0.14, 0.30, 0.22, w);                   // a rare big one
-      slide(p, 9.0, 0.0, 0.045, 1.15, mix(0.20, 0.80, uStorm), w);          // a few drops running down
-      slide(p, 15.0, 40.0, 0.08, 0.6, mix(0.10, 0.65, uStorm), w);          // smaller, quicker ones
-      slide(p, 12.0, 77.0, 0.06, 0.9, uStorm * 0.5, w);                     // (a third set only in the opening downpour)
+      slide(p, 9.0, 0.0, 0.03, 1.0, 0.14, w);                               // a few drops slowly running down
+      slide(p, 15.0, 40.0, 0.05, 0.6, 0.06, w);                              // smaller ones, now and then
       // how the water bends the picture here: a drop's lens, or the thin sideways bend along a wet streak
       vec2 g = w.hgt > 0.0 ? w.grad : vec2(w.tg, 0.0);
       // packed into two 8-bit targets (neutral value 0.5 for the signed ones, so blending towards "no water" fades smoothly)
@@ -167,7 +166,7 @@ const COMP_FRAG = `
     uniform float uScroll;  // how far the road has scrolled, so puddles and ripples move with it
     uniform float uWet;     // 1 = the wet, reflective floor beside the road is on (the background-rain switch)
     uniform float uDark;    // how dark the rim of a drop is
-    uniform float uBloom;   // strength of the glow around bright lights and LED screens
+    uniform float uSharp;   // strength of the sharpening
     uniform vec2 uRes;
     varying vec2 vUv;
 
@@ -223,25 +222,23 @@ const COMP_FRAG = `
           vec2 rc = floor(vec2(fl.x * 1.6, fl.y * 1.2));
           vec2 rp = vec2(fl.x * 1.6, fl.y * 1.2) - rc - 0.5 - (vec2(h21(rc), h21(rc.yx)) - 0.5) * 0.5;
           float rr = length(rp);
-          float rph = fract(uTime * 0.6 + h21(rc + vec2(3.0, 5.0)));
+          float rph = fract(uTime * 0.3 + h21(rc + vec2(3.0, 5.0)));
           float ring = sin((rr - rph * 0.5) * 60.0) * exp(-abs(rr - rph * 0.5) * 14.0) * (1.0 - rph) * puddle;
           float fres = mix(0.9, 0.25, clamp(dy / uHor, 0.0, 1.0));
           vec3 refl = vec3(0.0);
           for (int k = 0; k < 6; k++) {
             float dd = (float(k) + 0.5) / 6.0;
-            vec2 ruv = vec2(vUv.x + ring * 0.006 * (0.5 + dd) + (vnoise(vec2(fl.x * 6.0 + float(k), fl.y * 0.2)) - 0.5) * 0.0012, vUv.y + dy * (0.8 + 2.4 * dd));
+            vec2 ruv = vec2(vUv.x + ring * 0.003 * (0.5 + dd) + (vnoise(vec2(fl.x * 6.0 + float(k), fl.y * 0.2)) - 0.5) * 0.0012, vUv.y + dy * (0.8 + 2.4 * dd));
             refl += max(textureLod(tScene, clamp(ruv, 0.001, 0.999), 0.0).rgb - 0.18, 0.0) * (1.0 - dd * 0.5);
           }
           col = col * (1.0 - puddle * 0.35 * floorM) + refl / 6.0 * 3.0 * wetness * fres * floorM * 0.85;
         }
       }
-      // bloom: the scene's own mip chain is a free blur, so bright LED screens, beams and lamps glow softly
-      if (uBloom > 0.0) {
-        vec2 bpx = 1.0 / uRes;
-        vec3 glow = (textureLod(tScene, uv + vec2(6.0, -6.0) * bpx, 3.0).rgb + textureLod(tScene, uv - vec2(6.0, -6.0) * bpx, 3.0).rgb) * 0.36
-                  + (textureLod(tScene, uv + vec2(18.0, 18.0) * bpx, 5.0).rgb + textureLod(tScene, uv - vec2(18.0, 18.0) * bpx, 5.0).rgb) * 0.24;
-        col += max(glow - 0.08, 0.0) * uBloom;
-      }
+      // a light sharpen (unsharp mask), so edges and lettering stay crisp
+      vec2 px = 1.0 / uRes;
+      vec3 around = (textureLod(tScene, uv + vec2(px.x, 0.0), 0.0).rgb + textureLod(tScene, uv - vec2(px.x, 0.0), 0.0).rgb
+                   + textureLod(tScene, uv + vec2(0.0, px.y), 0.0).rgb + textureLod(tScene, uv - vec2(0.0, px.y), 0.0).rgb) * 0.25;
+      col += (col - around) * uSharp;
       // a gentle vignette pulls the eye to the runner
       vec2 vc = (vUv - 0.5) * vec2(1.15, 1.0) * 2.0;
       col *= 1.0 - 0.28 * smoothstep(0.55, 1.45, length(vc));
@@ -253,8 +250,8 @@ const WATER_SCALE = 0.5;   // the water field is computed at this fraction of th
 
 export function createGlass({ renderer, scene, camera, rain }) {
   const sceneRT = new THREE.WebGLRenderTarget(2, 2, {
-    minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true,
-    samples: 4,                          // the same 4x anti-aliasing the normal screen has
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false,   // no mip chain: nothing blurs it, and it costs a pass every frame
+    samples: renderer.getPixelRatio() >= 1.5 ? 2 : 4,   // at 1.5x or more the extra pixels already smooth edges, so 2x MSAA looks the same for half the memory traffic
     colorSpace: THREE.SRGBColorSpace,    // stored like a normal picture, so the dark reds keep their detail instead of banding
   });
   const waterRT = new THREE.WebGLMultipleRenderTargets(2, 2, 2, {   // two 8-bit targets drawn at once (see WATER_FRAG for what is packed where)
@@ -264,13 +261,13 @@ export function createGlass({ renderer, scene, camera, rain }) {
   const VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
   const waterMat = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
-    uniforms: { ...shared, uStorm: { value: 0 }, uLite: { value: 0 }, uDrop: { value: 0.08 } },
+    uniforms: { ...shared, uStorm: { value: 0 }, uLite: { value: 0 }, uDrop: { value: 0.16 } },
     vertexShader: VERT, fragmentShader: WATER_FRAG, depthTest: false, depthWrite: false,
   });
   const compMat = new THREE.ShaderMaterial({
     uniforms: {
       ...shared, tScene: { value: sceneRT.texture }, tWaterA: { value: waterRT.texture[0] }, tWaterB: { value: waterRT.texture[1] },
-      uRain: { value: 1 }, uHor: { value: 0.67 }, uScroll: { value: 0 }, uWet: { value: 1 }, uBloom: { value: 0.25 }, uDark: { value: 0.16 },
+      uRain: { value: 1 }, uHor: { value: 0.67 }, uScroll: { value: 0 }, uWet: { value: 1 }, uSharp: { value: 0.5 }, uDark: { value: 0.16 },
     },
     vertexShader: VERT, fragmentShader: COMP_FRAG, depthTest: false, depthWrite: false,
   });
@@ -302,12 +299,12 @@ export function createGlass({ renderer, scene, camera, rain }) {
       if (outdoors) rain.step(dt, S.mode === 'playing' || S.mode === 'dying' ? S.speed : 3);
       if (broken) { renderer.render(scene, camera); return; }
       stormT += dt;
-      const storm = stormT < 3 ? 1 : Math.max(0, 1 - (stormT - 3) / 1.5);   // a downpour for the first 3 seconds of a run, then it clears
-      rainClock += dt * (1 + 13 * storm);                                     // and in the downpour the rain runs about 14 times faster
+      const storm = 0;                // no opening downpour any more: the rain stays calm for the whole run
+      rainClock += dt;
       const drops = settings.glass && level < 2;
       shared.uTime.value = rainClock;
       waterMat.uniforms.uStorm.value = storm;
-      waterMat.uniforms.uLite.value = level;
+      waterMat.uniforms.uLite.value = 1;   // the two finest bead layers are always skipped: they cost the most and show the least
       const u = compMat.uniforms;
       u.uRain.value = drops ? 1 : 0;           // drops on the window
       u.uWet.value = settings.rain ? 1 : 0;    // the wet floor beside the road
@@ -323,7 +320,7 @@ export function createGlass({ renderer, scene, camera, rain }) {
       renderer.setRenderTarget(null);
       renderer.render(compScene, quadCam);
     },
-    /** Called when a run starts: the rain comes down hard for the first few seconds. */
+    /** Called when a run starts. (There is no opening downpour now; kept so callers don't change.) */
     storm() { stormT = 0; },
     /** 0: everything. 1: lighter rain. 2: no drops on the window (the floor, bloom and vignette stay). Reversible. */
     setLevel(n) { level = n; },

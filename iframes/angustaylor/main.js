@@ -12,7 +12,7 @@ import { createGlass } from './glass.js';
 import { createTicker } from './ticker.js';
 
 const $ = (id) => document.getElementById(id);
-const sky = 0x2a0814;   // dark red haze: the whole run is a rally stage
+const sky = 0x06142e;   // deep blue haze: the whole run is a rally stage
 
 /* Hazard footprints for hit testing: half width (x), height (y), half depth (z). */
 const HAZ = { tax: { halfW: 0.75, h: 2.0, halfD: 0.45 }, tape: { halfW: 1.1, h: 0.8, halfD: 0.2 } };
@@ -32,17 +32,17 @@ async function boot() {
     fatal('Your browser could not start 3D graphics (WebGL). Try updating it, or turn on hardware acceleration.');
     return;
   }
-  const MAX_SCALE = Math.min(window.devicePixelRatio || 1, 1.5);
+  const MAX_SCALE = Math.min(window.devicePixelRatio || 1, 2);   // native resolution on a 2x screen, so nothing is upscaled and softened
   let renderScale = MAX_SCALE;   // pixels drawn per CSS pixel; the quality controller below moves this to hold 60 fps
   renderer.setPixelRatio(renderScale);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(sky);
-  scene.fog = new THREE.Fog(sky, 30, 120);
+  scene.fog = new THREE.Fog(sky, 45, 130);   // a light haze only: the far end of the road stays crisp
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 300);
 
-  scene.add(new THREE.HemisphereLight(0xffa0aa, 0x4a1620, 1.6));
-  const sun = new THREE.DirectionalLight(0xffc4c8, 2.6);
+  scene.add(new THREE.HemisphereLight(0x8fb4ff, 0x16284a, 1.25));
+  const sun = new THREE.DirectionalLight(0xeaf2ff, 2.4);
   sun.position.set(-6, 14, 8);
   sun.target.position.set(0, 0, -6);
   scene.add(sun, sun.target);

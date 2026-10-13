@@ -1,6 +1,6 @@
 // The world around the road: road and stage floor, templates cloned for scenery and obstacles,
 // truss arches with sweeping beams, confetti, and the menu stage Angus stands on.
-import { THREE, mat, mesh, box, canvasTex, signTex, rand, pick, mergeGeos, mergeTree, markFloor, blobShadow } from './gfx.js';
+import { THREE, mat, mesh, box, canvasTex, signTex, rand, pick, mergeGeos, mergeTree, markFloor, blobShadow, TEX_SCALE, MAX_ANISOTROPY } from './gfx.js';
 
 /** The menu stage lives high above the road so nothing from the game shows through. */
 export const STAGE = { x: 0, y: 200, z: 0 };
@@ -8,9 +8,9 @@ export const STAGE = { x: 0, y: 200, z: 0 };
 export function createWorld({ scene, camera }) {
   /* ---------- road & sky-side props ---------- */
   const roadTex = canvasTex(128, 256, (g, w, h) => {
-    g.fillStyle = '#33232d';
+    g.fillStyle = '#1c2536';
     g.fillRect(0, 0, w, h);
-    g.fillStyle = '#ff3b4a';
+    g.fillStyle = '#5b9bff';
     g.fillRect(4, 0, 6, h);
     g.fillRect(w - 10, 0, 6, h);
     g.fillRect(44, 0, 4, h / 2);     // dashed lane line, top half of each tile
@@ -21,14 +21,14 @@ export function createWorld({ scene, camera }) {
 
   const road = mesh(
     new THREE.PlaneGeometry(8, 200).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.4, metalness: 0.2 })
+    new THREE.MeshLambertMaterial({ map: roadTex })
   );
   road.position.set(0, 0, -60);
   road.castShadow = false;
   scene.add(road);
 
   // Black stage floor either side of the road. It tags its own pixels so the glass pass can put wet reflections only here.
-  const grassMat = new THREE.MeshStandardMaterial({ color: 0x2a1822, roughness: 0.45, metalness: 0.15, flatShading: true });
+  const grassMat = new THREE.MeshLambertMaterial({ color: 0x141c30, flatShading: true });
   markFloor(grassMat);
   for (const sx of [-1, 1]) {
     const grass = mesh(new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2), grassMat);
@@ -134,10 +134,10 @@ export function createWorld({ scene, camera }) {
     T.shot = orb;
 
     // rally-stage props: LED pillars, red searchlight stands, an LED screen and cheering crowds
-    const ledRed = new THREE.MeshBasicMaterial({ color: 0xff3b4a });
+    const ledRed = new THREE.MeshBasicMaterial({ color: 0x3b82ff });   // (LED strips and searchlights are blue now)
     T.buildings = [4, 6, 9, 12].map((h) => {
       const p = new THREE.Group();
-      p.add(mesh(new THREE.BoxGeometry(3, h, 3).translate(0, h / 2, 0), mat(pick([0x2a2f44, 0x3a2a3c, 0x26303f]), { emissive: 0x5a0a14 })));
+      p.add(mesh(new THREE.BoxGeometry(3, h, 3).translate(0, h / 2, 0), mat(pick([0x2a2f44, 0x2a3550, 0x26303f]), { emissive: 0x0a1a5a })));
       p.add(box(0.18, h * 0.9, 0.06, ledRed, -0.8, h / 2, 1.52), box(0.18, h * 0.9, 0.06, ledRed, 0.8, h / 2, 1.52));
       return p;
     });
@@ -146,7 +146,7 @@ export function createWorld({ scene, camera }) {
     tree.add(box(0.25, 3.6, 0.25, mat(0x20232b), 0, 1.8, 0));
     tree.add(mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.6, 8), mat(0x15181f)), mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 8), ledRed));
     tree.children[1].position.y = 3.9; tree.children[2].position.y = 4.2;
-    const spot = new THREE.Mesh(new THREE.ConeGeometry(0.9, 10, 10, 1, true).translate(0, 5, 0), new THREE.MeshBasicMaterial({ color: 0xff2a3a, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    const spot = new THREE.Mesh(new THREE.ConeGeometry(0.9, 10, 10, 1, true).translate(0, 5, 0), new THREE.MeshBasicMaterial({ color: 0x2a6aff, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     spot.position.y = 4.2; spot.rotation.z = 0.25;
     tree.add(spot);
     T.tree = tree;
@@ -155,9 +155,9 @@ export function createWorld({ scene, camera }) {
       const tex = canvasTex(512, 256, (g, w, h) => {
         const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#0a2a78'); gr.addColorStop(1, '#14409e');
         g.fillStyle = gr; g.fillRect(0, 0, w, h);
-        g.fillStyle = '#c8102e'; g.fillRect(0, h - 70, w, 44); g.fillStyle = '#ffffff'; g.fillRect(0, h - 26, w, 8);
+        g.fillStyle = '#2f6bff'; g.fillRect(0, h - 70, w, 44); g.fillStyle = '#ffffff'; g.fillRect(0, h - 26, w, 8);
         g.textAlign = 'center'; g.textBaseline = 'middle';
-        for (const [text, y, color, size] of [[line1, h * 0.3, '#ffffff', 78], [line2, h * 0.62, '#ffd34d', 62]]) {
+        for (const [text, y, color, size] of [[line1, h * 0.3, '#ffffff', 78], [line2, h * 0.62, '#ffffff', 62]]) {
           let sz = size; g.font = `900 ${sz}px system-ui, sans-serif`;
           while (sz > 20 && g.measureText(text).width > w - 40) { sz -= 4; g.font = `900 ${sz}px system-ui, sans-serif`; }
           g.fillStyle = color; g.fillText(text, w / 2, y);
@@ -175,17 +175,17 @@ export function createWorld({ scene, camera }) {
 
     const crowd = new THREE.Group();   // a row of silhouettes, a few in red caps, some with arms up
     const darkMat = mat(0x0a0d1a);
-    for (let i = 0; i < 5; i++) {
-      const x = (i - 2) * 0.75, h = 0.9 + ((i * 7) % 3) * 0.1;
+    for (let i = 0; i < 3; i++) {
+      const x = (i - 1) * 0.75, h = 0.9 + ((i * 7) % 3) * 0.1;
       crowd.add(box(0.6, h, 0.4, darkMat, x, h / 2, 0));
       const head = mesh(new THREE.SphereGeometry(0.25, 6, 5), darkMat);
       head.position.set(x, h + 0.2, 0);
       crowd.add(head);
-      if (i % 2 === 0) crowd.add(box(0.3, 0.1, 0.3, mat(0xc8102e), x, h + 0.42, 0));
+      if (i % 2 === 0) crowd.add(box(0.3, 0.1, 0.3, mat(0x1f4fb8), x, h + 0.42, 0));
       if (i % 3 === 1) crowd.add(box(0.12, 0.6, 0.12, darkMat, x + 0.35, h + 0.3, 0));
     }
     T.crowd = crowd;
-    T.billboards = [['VOTE', '#1f4fb8', '#ffffff'], ['POLICY', '#ffffff', '#1f4fb8'], ['BALLOT', '#c0152a', '#ffffff']].map(([text, bg, fg]) => {
+    T.billboards = [['VOTE', '#1f4fb8', '#ffffff'], ['POLICY', '#ffffff', '#1f4fb8'], ['BALLOT', '#0b2f86', '#ffffff']].map(([text, bg, fg]) => {
       const b = new THREE.Group();
       b.add(box(0.12, 2.6, 0.12, mat(0x555555), -0.9, 1.3, 0));
       b.add(box(0.12, 2.6, 0.12, mat(0x555555), 0.9, 1.3, 0));
@@ -206,7 +206,7 @@ export function createWorld({ scene, camera }) {
     const LW = 512, LH = 192;
     const draw = (g, img) => {
       g.fillStyle = '#0b2f86'; g.fillRect(0, 0, LW, LH);
-      g.strokeStyle = '#d4a017'; g.lineWidth = 8; g.strokeRect(4, 4, LW - 8, LH - 8);
+      g.strokeStyle = '#8fb4ff'; g.lineWidth = 8; g.strokeRect(4, 4, LW - 8, LH - 8);
       g.fillStyle = '#ffffff';
       if (img) {
         const ih = 130, iw = ih * img.naturalWidth / img.naturalHeight;
@@ -221,11 +221,13 @@ export function createWorld({ scene, camera }) {
       for (let x = 0; x < LW; x += 6) g.fillRect(x, 0, 2, LH);
     };
     const c = document.createElement('canvas');
-    c.width = LW; c.height = LH;
+    c.width = LW * TEX_SCALE; c.height = LH * TEX_SCALE;
     const g = c.getContext('2d');
+    g.scale(TEX_SCALE, TEX_SCALE);
     draw(g, null);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = MAX_ANISOTROPY;
     if (window.LED_LOGO) {
       const img = new Image();
       img.onload = () => { draw(g, img); tex.needsUpdate = true; };
@@ -236,7 +238,7 @@ export function createWorld({ scene, camera }) {
   const ledLogoMat = new THREE.MeshBasicMaterial({ map: ledLogoTex() });
 
   /* ---------- confetti drifting through the lights ---------- */
-  const CONF_N = 70;
+  const CONF_N = 40;
   const dotTex = canvasTex(32, 32, (g, w, h) => {   // a soft round dot for every particle
     const gr = g.createRadialGradient(16, 16, 1, 16, 16, 15);
     gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.8)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
@@ -254,12 +256,13 @@ export function createWorld({ scene, camera }) {
     confetti.geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
     confetti.frustumCulled = false;
     scene.add(confetti);
+    confetti.visible = false;   // no drifting dots: they added to the clutter
   }
 
   /* ---------- the horizon: a huge LED stage wall with a crowd in front of it (not fogged, so it glows through the haze) ---------- */
   const horizonSweep = canvasTex(256, 64, (g, w, h) => {
     const gr = g.createLinearGradient(0, 0, w, 0);
-    gr.addColorStop(0, 'rgba(255,60,80,0)'); gr.addColorStop(0.5, 'rgba(255,60,80,0.8)'); gr.addColorStop(1, 'rgba(255,60,80,0)');
+    gr.addColorStop(0, 'rgba(70,130,255,0)'); gr.addColorStop(0.5, 'rgba(70,130,255,0.8)'); gr.addColorStop(1, 'rgba(70,130,255,0)');
     g.fillStyle = gr; g.fillRect(0, 0, w, h);
   });
   horizonSweep.wrapS = THREE.RepeatWrapping;
@@ -270,10 +273,10 @@ export function createWorld({ scene, camera }) {
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
       g.strokeStyle = 'rgba(255,255,255,0.06)'; g.lineWidth = 1;
       for (let x = 0; x < w; x += 8) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-      g.fillStyle = '#c8102e'; g.fillRect(0, h - 90, w, 56); g.fillStyle = '#ffffff'; g.fillRect(0, h - 34, w, 10);
+      g.fillStyle = '#2f6bff'; g.fillRect(0, h - 90, w, 56); g.fillStyle = '#ffffff'; g.fillRect(0, h - 34, w, 10);
       g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffffff'; g.font = '900 150px system-ui, sans-serif';
       g.fillText('FIGHTING TAXES', w / 2, h * 0.38);
-      g.fillStyle = '#ffd34d'; g.font = '900 64px system-ui, sans-serif'; g.fillText('TAX CUTS NOW', w / 2, h * 0.68);
+      g.fillStyle = '#ffffff'; g.font = '900 64px system-ui, sans-serif'; g.fillText('TAX CUTS NOW', w / 2, h * 0.68);
     });
     const wall = new THREE.Group();
     wall.position.set(0, 0, -112);
@@ -297,7 +300,7 @@ export function createWorld({ scene, camera }) {
   /* ---------- glowing edge lights that scroll past, so you can feel the speed ---------- */
   const edgeGroup = new THREE.Group();
   {
-    const mats = [new THREE.MeshBasicMaterial({ color: 0xff3b4a }), new THREE.MeshBasicMaterial({ color: 0xe8eeff })];
+    const mats = [new THREE.MeshBasicMaterial({ color: 0x3b82ff }), new THREE.MeshBasicMaterial({ color: 0xe8eeff })];
     const geos = [[], []];
     for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) geos[i % 2].push(new THREE.BoxGeometry(0.16, 0.16, 3).translate(sx * 4.6, 0.12, 20 - i * 10));
     for (let k = 0; k < 2; k++) edgeGroup.add(new THREE.Mesh(mergeGeos(geos[k]), mats[k]));
@@ -307,29 +310,26 @@ export function createWorld({ scene, camera }) {
   /* ---------- tall alley walls with lit windows, to give the scene depth ---------- */
   const alleyWalls = [];
   {
-    const bricks = canvasTex(512, 256, (g, w, h) => {
+    const wallTex = canvasTex(512, 256, (g, w, h) => {
       g.fillStyle = '#141a24'; g.fillRect(0, 0, w, h);
       for (let y = 0; y < h; y += 16) {
         g.fillStyle = 'rgba(255,255,255,0.045)';
         for (let x = (y / 16) % 2 ? 0 : 20; x < w; x += 40) g.fillRect(x, y + 1, 38, 14);
       }
       g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, h - 24, w, 24);   // darker at the bottom, as if it were wet
-    });
-    const windows = canvasTex(512, 256, (g, w, h) => {
-      g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
       let seed = 5; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-      for (let gx = 0; gx < 8; gx++) for (let gy = 0; gy < 5; gy++) {
+      for (let gx = 0; gx < 8; gx++) for (let gy = 0; gy < 5; gy++) {   // lit windows
         const x = gx * 64 + 14, y = gy * 48 + 14, v = r();
-        if (v < 0.42) { g.fillStyle = v < 0.07 ? '#7aa8ff' : v < 0.12 ? '#ff4458' : '#ff7a8a'; g.fillRect(x, y, 30, 22); g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + 14, y, 2, 22); g.fillRect(x, y + 10, 30, 2); }
+        if (v < 0.42) { g.fillStyle = v < 0.07 ? '#dbe8ff' : v < 0.12 ? '#4f93ff' : '#9ec5ff'; g.fillRect(x, y, 30, 22); g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + 14, y, 2, 22); g.fillRect(x, y + 10, 30, 2); }
       }
-      g.fillStyle = '#ff2f55'; g.fillRect(40, 238, 150, 5);   // a neon strip
+      g.fillStyle = '#3d8bff'; g.fillRect(40, 238, 150, 5);   // a neon strip
     });
     for (const sx of [-1, 1]) {
-      const albedo = bricks.clone(), glow = windows.clone();
-      albedo.wrapS = glow.wrapS = THREE.RepeatWrapping;
-      albedo.repeat.set(6, 1); glow.repeat.set(6, 1);
-      albedo.needsUpdate = true; glow.needsUpdate = true;
-      const wall = new THREE.Mesh(new THREE.PlaneGeometry(150, 24), new THREE.MeshStandardMaterial({ map: albedo, emissiveMap: glow, emissive: 0xffffff, roughness: 0.9 }));
+      const albedo = wallTex.clone(), glow = albedo;   // (one texture now; `glow` is kept as an alias so scrolling stays one line)
+      albedo.wrapS = THREE.RepeatWrapping;
+      albedo.repeat.set(6, 1);
+      albedo.needsUpdate = true;
+      const wall = new THREE.Mesh(new THREE.PlaneGeometry(150, 24), new THREE.MeshBasicMaterial({ map: albedo }));   // unlit: it is a dark wall with lit windows, and it fills a big part of the screen
       wall.rotation.y = -sx * Math.PI / 2;
       wall.position.set(sx * 15, 12, -50);
       scene.add(wall);
@@ -338,10 +338,10 @@ export function createWorld({ scene, camera }) {
   }
 
   /* ---------- truss arches over the road, with sweeping red beams ---------- */
-  const ARCH_N = 7, ARCH_STEP = 20, BULBS = 14;
+  const ARCH_N = 5, ARCH_STEP = 24, BULBS = 9;
   const arches = [];
   let bulbGeo = null, glow = null, lastBulbPhase = -1;
-  const BULB_COLS = [[1, 0.82, 0.3], [1, 0.23, 0.29], [0.23, 0.15, 0.19], [0.23, 0.15, 0.19]];   // gold, red, then dark: the chase pattern
+  const BULB_COLS = [[1, 0.72, 0.78], [1, 0.23, 0.29], [0.23, 0.15, 0.19], [0.23, 0.15, 0.19]];   // pale pink, red, then dark: the chase pattern
   function setBulbs(ph) {
     const c = bulbGeo.attributes.color;
     for (let j = 0; j < BULBS; j++) { const col = BULB_COLS[(j + ph) % 4]; for (let v = 0; v < 24; v++) c.setXYZ(j * 24 + v, col[0], col[1], col[2]); }
@@ -360,15 +360,15 @@ export function createWorld({ scene, camera }) {
     const bulbVC = new THREE.MeshBasicMaterial({ vertexColors: true });
     const bannerTex = canvasTex(130, 300, (g, w, h) => {
       g.fillStyle = '#0b2f86'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#d4a017'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
+      g.strokeStyle = '#8fb4ff'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
       g.fillStyle = '#ffffff'; g.beginPath();
       for (let i = 0; i < 10; i++) { const ang = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 17 : 40; g.lineTo(w / 2 + Math.cos(ang) * r, 90 + Math.sin(ang) * r); }
       g.closePath(); g.fill();
-      g.fillStyle = '#c8102e'; g.fillRect(14, 180, w - 28, 70);
+      g.fillStyle = '#2f6bff'; g.fillRect(14, 180, w - 28, 70);
       g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '900 26px system-ui, sans-serif'; g.fillText('TAX', w / 2, 200); g.fillText('CUTS', w / 2, 232);
     });
     const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, side: THREE.DoubleSide });
-    const lens = new THREE.MeshBasicMaterial({ color: 0xff6a73 });
+    const lens = new THREE.MeshBasicMaterial({ color: 0x6aa8ff });
     const beamGeo = new THREE.ConeGeometry(1.1, 7, 12, 1, true).translate(0, -3.5, 0);   // apex at the origin so the beam swings from its lamp
     for (let i = 0; i < ARCH_N; i++) {
       const a = new THREE.Group();
@@ -388,12 +388,12 @@ export function createWorld({ scene, camera }) {
       const ledSign = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.275), ledLogoMat);
       ledSign.position.set(0, 8.4, 0.02);
       a.add(ledSign);
-      for (const [k, x] of [-3.6, 0, 3.6].entries()) {
+      for (const [k, x] of [-3, 3].entries()) {
         const housing = mesh(new THREE.CylinderGeometry(0.2, 0.28, 0.45, 8), can);
         housing.position.set(x, 7.0, 0);
         const l = mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 8), lens);
         l.position.set(x, 6.76, 0);
-        const bm = new THREE.MeshBasicMaterial({ color: [0xff2a3a, 0xffe3b0, 0xff2a3a][k], transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+        const bm = new THREE.MeshBasicMaterial({ color: [0x2a6aff, 0xd0e2ff][k], transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
         const pivot = new THREE.Group();
         pivot.position.set(x, 6.75, 0);
         pivot.add(new THREE.Mesh(beamGeo, bm));
@@ -410,7 +410,7 @@ export function createWorld({ scene, camera }) {
       scene.add(a);
       arches.push(a);
     }
-    glow = new THREE.PointLight(0xff2a3a, 120, 18, 2);   // a red glow over the runner (it follows him to the stage)
+    glow = new THREE.PointLight(0x2a6aff, 120, 18, 2);   // a blue glow over the runner (it follows him to the stage)
     glow.position.set(0, 5.5, 3);
     scene.add(glow);
     setBulbs(0);
@@ -432,7 +432,7 @@ export function createWorld({ scene, camera }) {
 
     // floor, with an LED edge strip
     add(mesh(new THREE.BoxGeometry(18, 0.4, 9), glossy), 0, -0.2, -0.5);
-    add(box(18, 0.07, 0.07, new THREE.MeshBasicMaterial({ color: 0xff2a3a }), 0, 0, 0), 0, 0.02, 3.95);
+    add(box(18, 0.07, 0.07, new THREE.MeshBasicMaterial({ color: 0x2a6aff }), 0, 0, 0), 0, 0.02, 3.95);
     add(mesh(new THREE.BoxGeometry(26, 0.2, 9), navy), 0, -0.3, 8.5);
 
     // LED backdrop: big wording, stars and a red band
@@ -441,26 +441,26 @@ export function createWorld({ scene, camera }) {
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
       g.strokeStyle = 'rgba(255,255,255,0.06)'; g.lineWidth = 1;
       for (let x = 0; x < w; x += 8) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-      g.fillStyle = '#c8102e'; g.fillRect(0, h - 90, w, 56);
+      g.fillStyle = '#2f6bff'; g.fillRect(0, h - 90, w, 56);
       g.fillStyle = '#ffffff'; g.fillRect(0, h - 34, w, 10);
       for (let i = 0; i < 9; i++) starPath(g, 70 + i * 110, 52, 20);
       g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffffff';
       fit(g, 'FIGHTING TAXES', w - 120, 150); g.fillText('FIGHTING TAXES', w / 2, h * 0.4);
-      fit(g, 'TAX CUTS NOW', w - 200, 70); g.fillStyle = '#ffd34d'; g.fillText('TAX CUTS NOW', w / 2, h * 0.68);
+      fit(g, 'TAX CUTS NOW', w - 200, 70); g.fillStyle = '#ffffff'; g.fillText('TAX CUTS NOW', w / 2, h * 0.68);
     });
     add(box(14.6, 6.9, 0.2, mat(0x050a1c), 0, 0, 0), 0, 3.7, -4.3);
     add(mesh(new THREE.PlaneGeometry(14, 6.4), led(backTex)), 0, 3.7, -4.18);
     // a red band of light that slides across the LED wall
     const sweepTex = canvasTex(256, 64, (g, w, h) => {
       const gr = g.createLinearGradient(0, 0, w, 0);
-      gr.addColorStop(0, 'rgba(255,40,60,0)'); gr.addColorStop(0.5, 'rgba(255,40,60,0.9)'); gr.addColorStop(1, 'rgba(255,40,60,0)');
+      gr.addColorStop(0, 'rgba(60,120,255,0)'); gr.addColorStop(0.5, 'rgba(60,120,255,0.9)'); gr.addColorStop(1, 'rgba(60,120,255,0)');
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
     });
     sweepTex.wrapS = THREE.RepeatWrapping;
     sweepTex.repeat.set(0.35, 1);
     stageAnim.sweep = sweepTex;
     add(mesh(new THREE.PlaneGeometry(14, 6.4), new THREE.MeshBasicMaterial({ map: sweepTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.6 })), 0, 3.7, -4.12);
-    const sideTex = canvasTex(128, 512, (g, w, h) => { g.fillStyle = '#0b2f86'; g.fillRect(0, 0, w, h); g.fillStyle = '#ffffff'; for (let i = 0; i < 6; i++) starPath(g, w / 2, 50 + i * 80, 24); g.fillStyle = '#c8102e'; g.fillRect(0, h - 30, w, 30); });
+    const sideTex = canvasTex(128, 512, (g, w, h) => { g.fillStyle = '#0b2f86'; g.fillRect(0, 0, w, h); g.fillStyle = '#ffffff'; for (let i = 0; i < 6; i++) starPath(g, w / 2, 50 + i * 80, 24); g.fillStyle = '#2f6bff'; g.fillRect(0, h - 30, w, 30); });
     for (const s of [-1, 1]) add(mesh(new THREE.PlaneGeometry(2.0, 6.4), led(sideTex)), s * 8.6, 3.7, -4.18);
 
     // LED sign above the backdrop
@@ -475,8 +475,8 @@ export function createWorld({ scene, camera }) {
     for (let i = 0; i < 7; i++) {
       const x = -7.2 + i * 2.4;
       add(mesh(new THREE.CylinderGeometry(0.2, 0.28, 0.5, 8), mat(0x15181f)), x, 6.85, -1.3);
-      add(mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 8), new THREE.MeshBasicMaterial({ color: 0xff6a73 })), x, 6.59, -1.3);
-      const bm = new THREE.MeshBasicMaterial({ color: 0xff2a3a, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      add(mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 8), new THREE.MeshBasicMaterial({ color: 0x6aa8ff })), x, 6.59, -1.3);
+      const bm = new THREE.MeshBasicMaterial({ color: 0x2a6aff, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
       const pivot = new THREE.Group();
       pivot.position.set(x, 6.58, -1.3);
       pivot.add(new THREE.Mesh(beamGeo, bm));
@@ -486,7 +486,7 @@ export function createWorld({ scene, camera }) {
     // soft red glows at the sides (flat additive sprites, not real lights, so the light count never changes and nothing recompiles)
     const washTex = canvasTex(64, 64, (g, w, h) => {
       const gr = g.createRadialGradient(32, 32, 2, 32, 32, 31);
-      gr.addColorStop(0, 'rgba(255,60,80,0.9)'); gr.addColorStop(1, 'rgba(255,40,60,0)');
+      gr.addColorStop(0, 'rgba(70,130,255,0.9)'); gr.addColorStop(1, 'rgba(50,110,255,0)');
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
     });
     for (const sx of [-1, 1]) {
@@ -497,7 +497,7 @@ export function createWorld({ scene, camera }) {
     }
 
     // lectern with microphones
-    const lecternTex = canvasTex(256, 128, (g, w, h) => { g.fillStyle = '#c8102e'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; fit(g, 'FIGHTING TAXES', w - 24, 40); g.fillText('FIGHTING TAXES', w / 2, h / 2); });
+    const lecternTex = canvasTex(256, 128, (g, w, h) => { g.fillStyle = '#2f6bff'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; fit(g, 'FIGHTING TAXES', w - 24, 40); g.fillText('FIGHTING TAXES', w / 2, h / 2); });
     add(mesh(new THREE.BoxGeometry(1.5, 1.7, 0.8), mat(0x1a2a5c)), 0.3, 0.85, -1.5);
     add(mesh(new THREE.PlaneGeometry(1.0, 0.5), led(lecternTex)), 0.3, 1.0, -1.09);
     for (const s of [-1, 1]) {
@@ -506,7 +506,7 @@ export function createWorld({ scene, camera }) {
     }
 
     // flags
-    const flagTex = canvasTex(160, 100, (g, w, h) => { g.fillStyle = '#0b2f86'; g.fillRect(0, 0, w, h); g.strokeStyle = '#d4a017'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6); g.fillStyle = '#fff'; starPath(g, w / 2, h / 2, 30); });
+    const flagTex = canvasTex(160, 100, (g, w, h) => { g.fillStyle = '#0b2f86'; g.fillRect(0, 0, w, h); g.strokeStyle = '#ffffff'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6); g.fillStyle = '#fff'; starPath(g, w / 2, h / 2, 30); });
     for (const s of [-1, 1]) {
       add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 5, 6), mat(0xb8bcc7)), s * 6.6, 2.5, -2.6);
       stageAnim.flags.push(add(mesh(new THREE.PlaneGeometry(1.7, 1.06), led(flagTex)), s * 6.6 - s * 0.85, 4.4, -2.6));
@@ -520,7 +520,7 @@ export function createWorld({ scene, camera }) {
       g.textAlign = 'center'; g.textBaseline = 'middle';
       fit(g, 'FANTASTIC', w - 70, 96); g.fillText('FANTASTIC', w / 2, h * 0.38);
       fit(g, 'GREAT MOVE', w - 70, 92); g.fillText('GREAT MOVE', w / 2, h * 0.68);
-      g.fillStyle = '#c8102e'; g.fillRect(70, h * 0.84, w - 140, 12);
+      g.fillStyle = '#2f6bff'; g.fillRect(70, h * 0.84, w - 140, 12);
     });
     const sign = new THREE.Group();
     sign.position.set(2.5, 0, 0.3); sign.rotation.y = 0.2;
@@ -533,7 +533,7 @@ export function createWorld({ scene, camera }) {
 
     // audience: dark silhouettes in the foreground, a few in red caps
     let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const dark = mat(0x0a1024), cap = mat(0xc8102e);
+    const dark = mat(0x0a1024), cap = mat(0x1f4fb8);
     const flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     for (let row = 0; row < 2; row++) for (let i = 0; i < 20; i++) {
       const x = -9.5 + i * 1.0 + rnd() * 0.4, z = 5.2 + row * 1.5, y = 0.5 + row * 0.15 + rnd() * 0.1;
@@ -552,12 +552,13 @@ export function createWorld({ scene, camera }) {
     }
   }
   scene.add(stage);
-  const SKY_BG = scene.background, STAGE_BG = new THREE.Color(0x140a1a);
+  const FOG_NEAR = scene.fog ? scene.fog.near : 45, FOG_FAR = scene.fog ? scene.fog.far : 130;   // the road's own fog, restored when leaving the stage
+  const SKY_BG = scene.background, STAGE_BG = new THREE.Color(0x0a1020);
   const GLOW_ROAD = { y: 5.5, z: 3, i: 120 };
   function stageMode(on) {
     stage.visible = on;
     scene.background = on ? STAGE_BG : SKY_BG;
-    if (scene.fog) { scene.fog.near = on ? 400 : 30; scene.fog.far = on ? 900 : 120; }   // the fog object is never swapped, so no shader recompiles
+    if (scene.fog) { scene.fog.near = on ? 400 : FOG_NEAR; scene.fog.far = on ? 900 : FOG_FAR; }   // the fog object is never swapped, so no shader recompiles
     // the same red light follows him to the stage; no light is ever added or removed
     if (on) glow.position.set(STAGE.x - 0.5, STAGE.y + 5.5, STAGE.z + 6); else glow.position.set(0, GLOW_ROAD.y, GLOW_ROAD.z);
     glow.intensity = on ? 260 : GLOW_ROAD.i;
@@ -596,8 +597,8 @@ export function createWorld({ scene, camera }) {
     horizonSweep.offset.x = (tt * 0.04) % 1;   // the red band slides across the far LED wall
     edgeGroup.position.z += move; if (edgeGroup.position.z > 0) edgeGroup.position.z -= 20;   // the pattern repeats every 20 units, so it loops seamlessly
     for (const aw of alleyWalls) { const d = move / 25; aw.albedo.offset.x += aw.sx < 0 ? d : -d; aw.glow.offset.x = aw.albedo.offset.x; }   // the walls slide past with the road
-    const cp = confetti.geometry.attributes.position;   // confetti falls, drifts and scrolls with the world
-    for (let i = 0; i < CONF_N; i++) {
+    const cp = confetti.geometry.attributes.position;   // confetti falls, drifts and scrolls with the world (kept ready, but hidden)
+    if (confetti.visible) for (let i = 0; i < CONF_N; i++) {
       let y = cp.getY(i) - 1.1 * dt, z = cp.getZ(i) + move;
       if (y < 0) y = 9;
       if (z > 12) z -= 80;
@@ -625,7 +626,6 @@ export function createWorld({ scene, camera }) {
   function lowDetail(on = true) {
     if (on === lowDetailOn) return;
     lowDetailOn = on;
-    confetti.visible = !on;
     for (const a of arches) for (const b of a.userData.beams) { b.pivot.visible = !on; b.pool.visible = !on; }
   }
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
 <meta name="description" content="Angus Taylah: Fighting Taxes, the new 3D edition. A low-poly 3D runner in the rain. Dodge the taxes, the red tape and the bosses." />
-<meta name="theme-color" content="#2a0814" />
+<meta name="theme-color" content="#06142e" />
 <title>Angus Taylah: Fighting Taxes (New 3D Edition)</title>
 <link rel="modulepreload" href="angustaylor/vendor/three.module.min.js" />
 <link rel="modulepreload" href="angustaylor/main.js" />
@@ -22,12 +22,12 @@
 <link rel="preload" as="image" href="angustaylor/faces/angus.webp" />
 <style>
   :root {
-    --blue: #1f4fb8; --navy: #0b1d3a; --gold: #d4a017; --red: #c8102e; --ink: #1b2a41;
+    --blue: #1f4fb8; --navy: #0b1d3a; --gold: #d4a017; --red: #c8102e; --accent: #2f6bff; --ink: #1b2a41;
     --card: #ffffff; --card-ink: #1b2a41; --muted: rgba(27, 42, 65, .62);
   }
   html, body {
     margin: 0; height: 100%; overflow: hidden;
-    background: #2a0814;
+    background: #06142e;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
   }
@@ -58,7 +58,7 @@
   }
   #powers {
     position: fixed; top: calc(52px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: none; z-index: 2; white-space: nowrap;
-    background: rgba(10, 25, 50, .72); color: #fff; padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 800; border: 2px solid #ff6a73; pointer-events: none;
+    background: rgba(10, 25, 50, .72); color: #fff; padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 800; border: 2px solid #6aa8ff; pointer-events: none;
   }
   .iconBtn {
     position: fixed; z-index: 4; margin: 0; padding: 0; width: 38px; height: 38px; border-radius: 12px; font-size: 16px;
@@ -85,7 +85,7 @@
   #toast {
     position: fixed; z-index: 3; top: calc(84px + env(safe-area-inset-top, 0px)); left: 50%; opacity: 0; pointer-events: none;
     display: flex; align-items: center; gap: 12px; padding: 8px 18px 8px 10px; border-radius: 999px; color: #fff;
-    background: linear-gradient(90deg, #7a0b1c, #c8102e); border: 2px solid #ffd34d; box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+    background: linear-gradient(90deg, #0b2f86, #2f6bff); border: 2px solid #ffd34d; box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
     transform: translate(-50%, -20px); max-width: calc(100vw - 24px); box-sizing: border-box;
   }
   #toast.show { animation: toast 2.6s ease-out forwards; }
@@ -130,7 +130,7 @@
     display: inline-block; margin: 0 0 8px; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 900; letter-spacing: .22em; color: #3a2a00;
     background: linear-gradient(90deg, #f6d365, #d4a017); box-shadow: 0 2px 0 rgba(0, 0, 0, .2);
   }
-  .card h1 small { display: block; font-size: 14px; letter-spacing: .32em; color: var(--red); margin-top: 6px; }
+  .card h1 small { display: block; font-size: 14px; letter-spacing: .32em; color: var(--accent); margin-top: 6px; }
   .card h2 { margin: 0 0 10px; color: var(--blue); font-size: 26px; }
   .tag { margin: 10px 0 12px; color: var(--muted); font-size: 14px; }
   .fine { font-size: 11px; color: var(--muted); margin: 12px 0 0; line-height: 1.4; }
@@ -164,15 +164,15 @@
 
   /* ---------- news ticker ---------- */
   #ticker { position: fixed; left: 0; right: 0; bottom: env(safe-area-inset-bottom, 0px); z-index: 3; display: flex; height: 36px; background: #0b1d3a; border-top: 3px solid var(--gold); color: #fff; font: 700 15px system-ui, sans-serif; pointer-events: none; }
-  .tk-live { background: var(--red); padding: 0 12px; display: flex; align-items: center; letter-spacing: .12em; font-size: 12px; font-weight: 900; }
+  .tk-live { background: var(--accent); padding: 0 12px; display: flex; align-items: center; letter-spacing: .12em; font-size: 12px; font-weight: 900; }
   .tk-view { flex: 1; overflow: hidden; position: relative; }
   .tk-item { position: absolute; top: 0; left: 0; line-height: 33px; white-space: nowrap; transform: translateX(var(--vw, 100vw)); }
   @keyframes tk { from { transform: translateX(var(--vw, 100vw)); } to { transform: translateX(-100%); } }
 
   /* ---------- loading and errors ---------- */
-  #loader, #fatal { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(circle at 50% 35%, #5a1226, #1a0610); color: #fff; text-align: center; padding: 24px; box-sizing: border-box; }
+  #loader, #fatal { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(circle at 50% 35%, #10306e, #040c1e); color: #fff; text-align: center; padding: 24px; box-sizing: border-box; }
   #loader h1 { margin: 0; font-size: 30px; letter-spacing: .04em; }
-  #loader h1 small { display: block; color: #ff8a98; font-size: 14px; letter-spacing: .32em; margin-top: 6px; }
+  #loader h1 small { display: block; color: #8fb4ff; font-size: 14px; letter-spacing: .32em; margin-top: 6px; }
   .bar { width: min(280px, 70vw); height: 8px; border-radius: 99px; background: rgba(255, 255, 255, .18); overflow: hidden; }
   #loadBar { width: 6%; height: 100%; background: linear-gradient(90deg, #ffd34d, #fff); transition: width .25s; }
   #fatal p { max-width: 420px; line-height: 1.5; }
@@ -298,7 +298,7 @@
 
 <div id="loader"><h1>ANGUS TAYLAH<small>FIGHTING TAXES</small></h1><div style="color:#ffd34d;font-weight:900;letter-spacing:.22em;font-size:13px">NEW 3D EDITION</div><div class="bar"><div id="loadBar"></div></div><div>Loading…</div></div>
 <div id="fatal" class="hidden" role="alert"><h1>Oops</h1><p id="fatalMsg"></p><button onclick="location.reload()">Reload</button></div>
-<noscript><div id="fatal" style="position:fixed;inset:0;z-index:30;background:#1a0610;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">This game needs JavaScript.</div></noscript>
+<noscript><div id="fatal" style="position:fixed;inset:0;z-index:30;background:#040c1e;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">This game needs JavaScript.</div></noscript>
 
 <script nomodule>
   document.getElementById('loader').style.display = 'none';

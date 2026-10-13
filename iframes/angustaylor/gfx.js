@@ -32,14 +32,21 @@ export function box(w, h, d, material, x = 0, y = 0, z = 0) {
   return m;
 }
 
-export function canvasTex(w, h, draw) {
+/** Every canvas texture is painted at this many pixels per drawing unit, so text and lines stay sharp up close and on big LED screens. Drawing code keeps working in the logical w x h. */
+export const TEX_SCALE = 2;
+export const MAX_ANISOTROPY = 16;   // the GPU clamps this to what it supports
+export function canvasTex(w, h, draw, scale = TEX_SCALE) {
+  const s = Math.min(scale, 4096 / Math.max(w, h));
   const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d'), w, h);
+  c.width = Math.round(w * s);
+  c.height = Math.round(h * s);
+  const g = c.getContext('2d');
+  g.scale(s, s);
+  draw(g, w, h);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = MAX_ANISOTROPY;
+  tex.generateMipmaps = true;
   return tex;
 }
 

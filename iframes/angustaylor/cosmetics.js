@@ -4,7 +4,7 @@
 // drag, fixed sub-steps, and collision with his body (torso, hips and legs, head, shoulders, swinging
 // arms) and the ground. It is stepped once per frame AFTER the player's final pose, so the tie point
 // is always exactly on his collar.
-import { THREE, mat, mesh, box, canvasTex } from './gfx.js';
+import { THREE, mat, mesh, box, canvasTex, TEX_SCALE, MAX_ANISOTROPY } from './gfx.js';
 import { S, W } from './state.js';
 
 export function createCosmetics({ scene, player, camera }) {
@@ -28,11 +28,13 @@ export function createCosmetics({ scene, player, camera }) {
       }
     };
     const c = document.createElement('canvas');
-    c.width = 512; c.height = 256;
+    c.width = 512 * TEX_SCALE; c.height = 256 * TEX_SCALE;
     const g = c.getContext('2d');
+    g.scale(TEX_SCALE, TEX_SCALE);
     draw(g, 512, 256, null);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = MAX_ANISOTROPY;
     if (window.BALLOON_LOGO) {
       const img = new Image();
       img.onload = () => { draw(g, 512, 256, img); tex.needsUpdate = true; };

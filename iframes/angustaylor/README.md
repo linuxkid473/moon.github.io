@@ -27,10 +27,10 @@ because the game is loaded as ES modules.
 
 ## What's new in v3 (merged with the rally-stage build)
 
-* **Graphics:** the scene is drawn to a texture and seen through rain-spattered glass with a wet floor that reflects the lights and LED screens, plus bloom and a vignette. Alley walls with lit windows, a huge LED wall and crowd at the horizon, scrolling edge lights, richer tax stacks, red-tape barriers and spinning coins, and more detailed people (creases, soles, pocket squares, watches). Static meshes are baked together to keep draw calls low.
+* **Graphics:** the scene is drawn to a texture and seen through rain-spattered glass with a wet floor that reflects the lights and LED screens (the world is a Liberal blue; red is kept for hazards: tape, tax stacks, orbs), plus a vignette. Nothing is blurred: no bloom, canvas textures are painted at 2x, the game renders at the screen's native resolution, and a light sharpen runs in the final pass. Alley walls with lit windows, a huge LED wall and crowd at the horizon, scrolling edge lights, richer tax stacks, red-tape barriers and spinning coins, and more detailed people (creases, soles, pocket squares, watches). Static meshes are baked together to keep draw calls low.
 * **Gameplay:** golden SURPLUS cuts (worth 10), ribbon-cutting scissors (cut through hazards for 6 s), a consultant (takes the blame for one hit), streak call-outs, ranks and game-over titles, a camera that leans into lane changes.
 * **Settings:** "Rain on the window" and "Rain in the world & wet floor" can each be switched off. Add `?noadapt` to the URL to stop the game lowering quality automatically while you test.
-* **Quality ladder:** if the frame rate stays low the game steps down: lighter rain and 1x resolution, then the glass pass, beams and shadows off, then 0.75x resolution.
+* **Dynamic resolution:** every ~0.75 s the average frame time is checked. Slower than 60 fps: the render scale drops a step (down to 0.6x, and the window drops go off at the low end). Comfortably fast for a few seconds: it probes a step back up. It starts at the screen's native resolution (up to 2x).
 * The menu stage no longer adds or removes lights or fog when switching to the road, which used to recompile every shader and cause a hitch.
 
 ## Physics and feel
