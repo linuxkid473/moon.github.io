@@ -155,7 +155,7 @@ export function createWorld({ scene, camera }) {
       const tex = canvasTex(512, 256, (g, w, h) => {
         const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#0a2a78'); gr.addColorStop(1, '#14409e');
         g.fillStyle = gr; g.fillRect(0, 0, w, h);
-        g.fillStyle = '#2f6bff'; g.fillRect(0, h - 70, w, 44); g.fillStyle = '#ffffff'; g.fillRect(0, h - 26, w, 8);
+        g.fillStyle = '#c8102e'; g.fillRect(0, h - 70, w, 44); g.fillStyle = '#ffffff'; g.fillRect(0, h - 26, w, 8);
         g.textAlign = 'center'; g.textBaseline = 'middle';
         for (const [text, y, color, size] of [[line1, h * 0.3, '#ffffff', 78], [line2, h * 0.62, '#ffffff', 62]]) {
           let sz = size; g.font = `900 ${sz}px system-ui, sans-serif`;
@@ -181,7 +181,7 @@ export function createWorld({ scene, camera }) {
       const head = mesh(new THREE.SphereGeometry(0.25, 6, 5), darkMat);
       head.position.set(x, h + 0.2, 0);
       crowd.add(head);
-      if (i % 2 === 0) crowd.add(box(0.3, 0.1, 0.3, mat(0x1f4fb8), x, h + 0.42, 0));
+      if (i % 2 === 0) crowd.add(box(0.3, 0.1, 0.3, mat(i === 0 ? 0xc8102e : 0x1f4fb8), x, h + 0.42, 0));
       if (i % 3 === 1) crowd.add(box(0.12, 0.6, 0.12, darkMat, x + 0.35, h + 0.3, 0));
     }
     T.crowd = crowd;
@@ -273,7 +273,7 @@ export function createWorld({ scene, camera }) {
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
       g.strokeStyle = 'rgba(255,255,255,0.06)'; g.lineWidth = 1;
       for (let x = 0; x < w; x += 8) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-      g.fillStyle = '#2f6bff'; g.fillRect(0, h - 90, w, 56); g.fillStyle = '#ffffff'; g.fillRect(0, h - 34, w, 10);
+      g.fillStyle = '#c8102e'; g.fillRect(0, h - 90, w, 56); g.fillStyle = '#ffffff'; g.fillRect(0, h - 34, w, 10);
       g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffffff'; g.font = '900 150px system-ui, sans-serif';
       g.fillText('FIGHTING TAXES', w / 2, h * 0.38);
       g.fillStyle = '#ffffff'; g.font = '900 64px system-ui, sans-serif'; g.fillText('TAX CUTS NOW', w / 2, h * 0.68);
@@ -300,7 +300,7 @@ export function createWorld({ scene, camera }) {
   /* ---------- glowing edge lights that scroll past, so you can feel the speed ---------- */
   const edgeGroup = new THREE.Group();
   {
-    const mats = [new THREE.MeshBasicMaterial({ color: 0x3b82ff }), new THREE.MeshBasicMaterial({ color: 0xe8eeff })];
+    const mats = [new THREE.MeshBasicMaterial({ color: 0xff3b4a }), new THREE.MeshBasicMaterial({ color: 0xe8eeff })];
     const geos = [[], []];
     for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) geos[i % 2].push(new THREE.BoxGeometry(0.16, 0.16, 3).translate(sx * 4.6, 0.12, 20 - i * 10));
     for (let k = 0; k < 2; k++) edgeGroup.add(new THREE.Mesh(mergeGeos(geos[k]), mats[k]));
@@ -320,7 +320,7 @@ export function createWorld({ scene, camera }) {
       let seed = 5; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
       for (let gx = 0; gx < 8; gx++) for (let gy = 0; gy < 5; gy++) {   // lit windows
         const x = gx * 64 + 14, y = gy * 48 + 14, v = r();
-        if (v < 0.42) { g.fillStyle = v < 0.07 ? '#dbe8ff' : v < 0.12 ? '#4f93ff' : '#9ec5ff'; g.fillRect(x, y, 30, 22); g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + 14, y, 2, 22); g.fillRect(x, y + 10, 30, 2); }
+        if (v < 0.42) { g.fillStyle = v < 0.07 ? '#dbe8ff' : v < 0.12 ? '#4f93ff' : v < 0.2 ? '#ff6a78' : '#9ec5ff'; g.fillRect(x, y, 30, 22); g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + 14, y, 2, 22); g.fillRect(x, y + 10, 30, 2); }
       }
       g.fillStyle = '#3d8bff'; g.fillRect(40, 238, 150, 5);   // a neon strip
     });
@@ -341,7 +341,7 @@ export function createWorld({ scene, camera }) {
   const ARCH_N = 5, ARCH_STEP = 24, BULBS = 9;
   const arches = [];
   let bulbGeo = null, glow = null, lastBulbPhase = -1;
-  const BULB_COLS = [[1, 0.72, 0.78], [1, 0.23, 0.29], [0.23, 0.15, 0.19], [0.23, 0.15, 0.19]];   // pale pink, red, then dark: the chase pattern
+  const BULB_COLS = [[0.72, 0.82, 1], [1, 0.23, 0.29], [0.23, 0.15, 0.19], [0.23, 0.15, 0.19]];   // pale pink, red, then dark: the chase pattern
   function setBulbs(ph) {
     const c = bulbGeo.attributes.color;
     for (let j = 0; j < BULBS; j++) { const col = BULB_COLS[(j + ph) % 4]; for (let v = 0; v < 24; v++) c.setXYZ(j * 24 + v, col[0], col[1], col[2]); }
@@ -364,7 +364,7 @@ export function createWorld({ scene, camera }) {
       g.fillStyle = '#ffffff'; g.beginPath();
       for (let i = 0; i < 10; i++) { const ang = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 17 : 40; g.lineTo(w / 2 + Math.cos(ang) * r, 90 + Math.sin(ang) * r); }
       g.closePath(); g.fill();
-      g.fillStyle = '#2f6bff'; g.fillRect(14, 180, w - 28, 70);
+      g.fillStyle = '#c8102e'; g.fillRect(14, 180, w - 28, 70);
       g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '900 26px system-ui, sans-serif'; g.fillText('TAX', w / 2, 200); g.fillText('CUTS', w / 2, 232);
     });
     const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, side: THREE.DoubleSide });
@@ -393,7 +393,7 @@ export function createWorld({ scene, camera }) {
         housing.position.set(x, 7.0, 0);
         const l = mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 8), lens);
         l.position.set(x, 6.76, 0);
-        const bm = new THREE.MeshBasicMaterial({ color: [0x2a6aff, 0xd0e2ff][k], transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+        const bm = new THREE.MeshBasicMaterial({ color: [0xff2a3a, 0x2a6aff][k], transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
         const pivot = new THREE.Group();
         pivot.position.set(x, 6.75, 0);
         pivot.add(new THREE.Mesh(beamGeo, bm));
@@ -441,7 +441,7 @@ export function createWorld({ scene, camera }) {
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
       g.strokeStyle = 'rgba(255,255,255,0.06)'; g.lineWidth = 1;
       for (let x = 0; x < w; x += 8) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-      g.fillStyle = '#2f6bff'; g.fillRect(0, h - 90, w, 56);
+      g.fillStyle = '#c8102e'; g.fillRect(0, h - 90, w, 56);
       g.fillStyle = '#ffffff'; g.fillRect(0, h - 34, w, 10);
       for (let i = 0; i < 9; i++) starPath(g, 70 + i * 110, 52, 20);
       g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffffff';
@@ -520,7 +520,7 @@ export function createWorld({ scene, camera }) {
       g.textAlign = 'center'; g.textBaseline = 'middle';
       fit(g, 'FANTASTIC', w - 70, 96); g.fillText('FANTASTIC', w / 2, h * 0.38);
       fit(g, 'GREAT MOVE', w - 70, 92); g.fillText('GREAT MOVE', w / 2, h * 0.68);
-      g.fillStyle = '#2f6bff'; g.fillRect(70, h * 0.84, w - 140, 12);
+      g.fillStyle = '#c8102e'; g.fillRect(70, h * 0.84, w - 140, 12);
     });
     const sign = new THREE.Group();
     sign.position.set(2.5, 0, 0.3); sign.rotation.y = 0.2;
@@ -533,7 +533,7 @@ export function createWorld({ scene, camera }) {
 
     // audience: dark silhouettes in the foreground, a few in red caps
     let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const dark = mat(0x0a1024), cap = mat(0x1f4fb8);
+    const dark = mat(0x0a1024), cap = mat(0x1f4fb8), capRed = mat(0xc8102e);
     const flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     for (let row = 0; row < 2; row++) for (let i = 0; i < 20; i++) {
       const x = -9.5 + i * 1.0 + rnd() * 0.4, z = 5.2 + row * 1.5, y = 0.5 + row * 0.15 + rnd() * 0.1;
@@ -541,7 +541,7 @@ export function createWorld({ scene, camera }) {
       const head = mesh(new THREE.SphereGeometry(0.24, 6, 5), dark);
       head.position.y = 0.45;
       person.add(head, box(0.62, 0.55, 0.38, dark, 0, 0, 0));
-      if (rnd() < 0.22) person.add(box(0.3, 0.1, 0.3, cap, 0, 0.66, 0));
+      if (rnd() < 0.3) person.add(box(0.3, 0.1, 0.3, rnd() < 0.5 ? cap : capRed, 0, 0.66, 0));
       add(person, x, y, z);
       stageAnim.crowd.push({ person, y0: y, phase: rnd() * 6.28 });
       if (rnd() < 0.18) {   // camera flashes in the crowd

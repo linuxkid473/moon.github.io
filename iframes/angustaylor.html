@@ -85,7 +85,7 @@
   #toast {
     position: fixed; z-index: 3; top: calc(84px + env(safe-area-inset-top, 0px)); left: 50%; opacity: 0; pointer-events: none;
     display: flex; align-items: center; gap: 12px; padding: 8px 18px 8px 10px; border-radius: 999px; color: #fff;
-    background: linear-gradient(90deg, #0b2f86, #2f6bff); border: 2px solid #ffd34d; box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+    background: linear-gradient(90deg, #0b2f86, #c8102e); border: 2px solid #ffd34d; box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
     transform: translate(-50%, -20px); max-width: calc(100vw - 24px); box-sizing: border-box;
   }
   #toast.show { animation: toast 2.6s ease-out forwards; }
@@ -130,7 +130,7 @@
     display: inline-block; margin: 0 0 8px; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 900; letter-spacing: .22em; color: #3a2a00;
     background: linear-gradient(90deg, #f6d365, #d4a017); box-shadow: 0 2px 0 rgba(0, 0, 0, .2);
   }
-  .card h1 small { display: block; font-size: 14px; letter-spacing: .32em; color: var(--accent); margin-top: 6px; }
+  .card h1 small { display: block; font-size: 14px; letter-spacing: .32em; color: var(--red); margin-top: 6px; }
   .card h2 { margin: 0 0 10px; color: var(--blue); font-size: 26px; }
   .tag { margin: 10px 0 12px; color: var(--muted); font-size: 14px; }
   .fine { font-size: 11px; color: var(--muted); margin: 12px 0 0; line-height: 1.4; }
@@ -164,7 +164,7 @@
 
   /* ---------- news ticker ---------- */
   #ticker { position: fixed; left: 0; right: 0; bottom: env(safe-area-inset-bottom, 0px); z-index: 3; display: flex; height: 36px; background: #0b1d3a; border-top: 3px solid var(--gold); color: #fff; font: 700 15px system-ui, sans-serif; pointer-events: none; }
-  .tk-live { background: var(--accent); padding: 0 12px; display: flex; align-items: center; letter-spacing: .12em; font-size: 12px; font-weight: 900; }
+  .tk-live { background: var(--red); padding: 0 12px; display: flex; align-items: center; letter-spacing: .12em; font-size: 12px; font-weight: 900; }
   .tk-view { flex: 1; overflow: hidden; position: relative; }
   .tk-item { position: absolute; top: 0; left: 0; line-height: 33px; white-space: nowrap; transform: translateX(var(--vw, 100vw)); }
   @keyframes tk { from { transform: translateX(var(--vw, 100vw)); } to { transform: translateX(-100%); } }
