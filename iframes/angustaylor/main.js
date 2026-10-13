@@ -945,7 +945,7 @@ async function boot() {
      Every ~0.75 s the average frame time is checked. If it is too slow the game gives things up in this order, and the
      picture stays sharp for as long as possible:
        stage 0  everything on
-       stage 1  no rain, wet floor, window drops or sweeping beams (cheap, the picture is as crisp as before)
+       stage 1  no rain, window drops or sweeping beams (cheap, the picture is as crisp as before)
        stage 2  no post-processing: the scene is drawn straight to the screen at full resolution
        stage 3  only now does the render scale come down, in small steps, and never below MIN_SCALE
      After a long stretch of fast frames it tries to give things back, one step at a time, and if that is too slow

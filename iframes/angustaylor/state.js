@@ -25,7 +25,7 @@ export const saveWallet = () => store.set(KEYS.wallet, JSON.stringify(W));
 
 /** Player settings. reduceMotion defaults to the OS preference. */
 const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-export const settings = readJson(KEYS.settings, { sfx: true, music: true, shake: !prefersReduced, glass: false, rain: true });   // glass: drops on the window. rain: rain in the world and the wet floor
+export const settings = readJson(KEYS.settings, { sfx: true, music: true, shake: !prefersReduced, glass: false, rain: true });   // glass: drops on the window. rain: rain in the world
 export const saveSettings = () => store.set(KEYS.settings, JSON.stringify(settings));
 // One-time migration: window drops used to be on by default and softened the picture, so they are off for everyone now (still a toggle in Settings).
 if (store.get('angusDropsOffV1', '') !== '1') { settings.glass = false; store.set('angusDropsOffV1', '1'); saveSettings(); }
