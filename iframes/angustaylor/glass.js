@@ -1,17 +1,15 @@
 // The final passes: the game is drawn to a texture and then seen through a pane of fogged, rain-spattered glass
-// with a wet reflective floor, a vignette (no bloom or blur: the picture stays sharp).
+// with a vignette (no bloom or blur: the picture stays sharp).
 //
 // Two passes keep it cheap: the water field (where every drop is and how it bends the picture) is computed at
 // a quarter of the pixels into two small 8-bit targets, then the full-resolution pass just reads it, bends the
-// scene through it and adds the floor, bloom and vignette. The expensive floor work only runs on floor pixels.
+// scene through it and adds the floor, bloom and vignette. 
 //
 // Rain on glass: a mist of tiny beads, a few bigger drops, and drops that slide down with stop-and-go motion,
 // wiping a clear trail through the condensation and leaving little beads behind. Every drop bends the picture
 // behind it like a small lens, with a bright glint. It is all computed in the shader from a few hashes, so
 // nothing is stored or uploaded.
 //
-// The wet floor: the floor material tags its own pixels (alpha 0.5, everything else 1.0), so this pass knows
-// exactly which pixels are floor and puts puddles, ripples and reflections only there.
 import { THREE } from './gfx.js';
 import { S, settings, store } from './state.js';
 
@@ -161,9 +159,6 @@ const COMP_FRAG = `
     uniform sampler2D tWaterB;
     uniform float uTime;
     uniform float uRain;    // 1 = drops on the window, 0 = none (the glow and grading still apply)
-    uniform float uHor;     // where the horizon sits on screen
-    uniform float uScroll;  // how far the road has scrolled, so puddles and ripples move with it
-    uniform float uWet;     // 1 = the wet, reflective floor beside the road is on (the background-rain switch)
     uniform float uDark;    // how dark the rim of a drop is
     uniform float uSharp;   // strength of the sharpening
     uniform vec2 uRes;
@@ -207,33 +202,6 @@ const COMP_FRAG = `
         col = col * (1.0 - uDark * dark * sz) + (spec * 0.55 + caus * 0.6 + glint) * sz * vec3(1.0, 0.97, 0.95);
       }
       col += vec3(0.025, 0.028, 0.032) * wet;   // the wet streaks catch a little light
-      // a wet, reflective floor: below the horizon the dark ground mirrors the bright things above it (lights,
-      // LED screens, the red lines), smeared a little, stronger in the puddles and rippled by the rain.
-      // Only floor pixels pay for any of this.
-      if (uWet > 0.5 && vUv.y < uHor + 0.02) {
-        float isFloor = 1.0 - smoothstep(0.55, 0.9, textureLod(tScene, vUv, 0.0).a);   // 1 only on the floor itself, never on people or props
-        float floorM = isFloor * smoothstep(uHor + 0.02, uHor - 0.12, vUv.y);
-        if (floorM > 0.01) {
-          float dy = max(uHor - vUv.y, 0.03);
-          vec2 fl = vec2((vUv.x - 0.5) / dy, 1.0 / dy + uScroll);   // flat-floor coordinates, with perspective
-          float puddle = smoothstep(0.50, 0.72, vnoise(vec2(fl.x * 0.9 + 3.0, fl.y * 0.55 + 7.0)));
-          float wetness = clamp(0.38 + 0.62 * puddle, 0.0, 1.0);
-          vec2 rc = floor(vec2(fl.x * 1.6, fl.y * 1.2));
-          vec2 rp = vec2(fl.x * 1.6, fl.y * 1.2) - rc - 0.5 - (vec2(h21(rc), h21(rc.yx)) - 0.5) * 0.5;
-          float rr = length(rp);
-          float rph = fract(uTime * 0.3 + h21(rc + vec2(3.0, 5.0)));
-          float ring = sin((rr - rph * 0.5) * 60.0) * exp(-abs(rr - rph * 0.5) * 14.0) * (1.0 - rph) * puddle;
-          float fres = mix(0.9, 0.25, clamp(dy / uHor, 0.0, 1.0));
-          // a clean mirror image of what stands above the floor: a few taps very close together, so the reflection stays sharp, not streaked
-          vec3 refl = vec3(0.0);
-          for (int k = 0; k < 3; k++) {
-            float dd = float(k) / 2.0;
-            vec2 ruv = vec2(vUv.x, vUv.y + dy * (1.8 + 0.3 * dd));
-            refl += max(textureLod(tScene, clamp(ruv, 0.001, 0.999), 0.0).rgb - 0.18, 0.0);
-          }
-          col = col * (1.0 - puddle * 0.35 * floorM) + refl / 3.0 * 2.2 * wetness * fres * floorM * 0.8;
-        }
-      }
       // a light sharpen (unsharp mask), so edges and lettering stay crisp
       vec2 px = 1.0 / uRes;
       vec3 around = (textureLod(tScene, uv + vec2(px.x, 0.0), 0.0).rgb + textureLod(tScene, uv - vec2(px.x, 0.0), 0.0).rgb
@@ -267,7 +235,7 @@ export function createGlass({ renderer, scene, camera, rain }) {
   const compMat = new THREE.ShaderMaterial({
     uniforms: {
       ...shared, tScene: { value: sceneRT.texture }, tWaterA: { value: waterRT.texture[0] }, tWaterB: { value: waterRT.texture[1] },
-      uRain: { value: 1 }, uHor: { value: 0.67 }, uScroll: { value: 0 }, uWet: { value: 1 }, uSharp: { value: 0.7 }, uDark: { value: 0.16 },
+      uRain: { value: 1 }, uSharp: { value: 0.7 }, uDark: { value: 0.16 },
     },
     vertexShader: VERT, fragmentShader: COMP_FRAG, depthTest: false, depthWrite: false,
   });
@@ -275,7 +243,6 @@ export function createGlass({ renderer, scene, camera, rain }) {
   const waterScene = new THREE.Scene(), compScene = new THREE.Scene();
   waterScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), waterMat));
   compScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat));
-  const fwd = new THREE.Vector3();
   let size = [1, 1], broken = false, level = 0;   // level: 0 everything, 1 lighter rain, 2 no drops on the window (the rest of the pass stays)
   let rainClock = 0, lastT = performance.now(), stormT = 99;   // the rain's own clock, and how long since the storm began
 
@@ -294,8 +261,8 @@ export function createGlass({ renderer, scene, camera, rain }) {
     render() {
       const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
       lastT = now;
-      const fancy = level < 1;                                 // level 1 and up: no rain, no wet floor, no window drops
-      const outdoors = fancy && settings.rain && S.mode !== 'menu';   // rain in the world: a light drizzle, a few splashes, the wet side floor
+      const fancy = level < 1;                                 // level 1 and up: no rain and no window drops
+      const outdoors = fancy && settings.rain && S.mode !== 'menu';   // rain in the world: a light drizzle and a few splashes
       rain.setVisible(outdoors);
       if (outdoors) rain.step(dt, S.mode === 'playing' || S.mode === 'dying' ? S.speed : 3);
       if (broken || level >= 2) { renderer.setRenderTarget(null); renderer.render(scene, camera); return; }   // level 2: no post-processing at all, the scene goes straight to the screen (still full resolution and anti-aliased)
@@ -308,10 +275,6 @@ export function createGlass({ renderer, scene, camera, rain }) {
       waterMat.uniforms.uLite.value = 1;   // the two finest bead layers are always skipped: they cost the most and show the least
       const u = compMat.uniforms;
       u.uRain.value = drops ? 1 : 0;           // drops on the window
-      u.uWet.value = fancy && settings.rain ? 1 : 0;    // the wet floor beside the road
-      camera.getWorldDirection(fwd);
-      u.uHor.value = 0.5 + Math.tan(Math.asin(Math.max(-1, Math.min(1, -fwd.y)))) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
-      u.uScroll.value = Math.min(1e5, (S.dist || 0) / 3.66);   // a point on the road keeps its place as you run
       if (drops) {   // the water field, at low resolution
         renderer.setRenderTarget(waterRT);
         renderer.render(waterScene, quadCam);
@@ -323,7 +286,7 @@ export function createGlass({ renderer, scene, camera, rain }) {
     },
     /** Called when a run starts. (There is no opening downpour now; kept so callers don't change.) */
     storm() { stormT = 0; },
-    /** 0: everything. 1: no rain, wet floor or window drops (the sharpen and vignette stay). 2: no post-processing, the scene is drawn straight to the screen. Reversible. */
+    /** 0: everything. 1: no rain or window drops (the sharpen and vignette stay). 2: no post-processing, the scene is drawn straight to the screen. Reversible. */
     setLevel(n) { level = n; },
     get level() { return level; },
     /** Build the shaders for both passes up front, so nothing hitches mid-run. */

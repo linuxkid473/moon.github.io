@@ -1,6 +1,6 @@
 // The world around the road: road and stage floor, templates cloned for scenery and obstacles,
 // truss arches with sweeping beams, confetti, and the menu stage Angus stands on.
-import { THREE, mat, mesh, box, canvasTex, signTex, rand, pick, mergeGeos, mergeTree, markFloor, blobShadow, TEX_SCALE, MAX_ANISOTROPY } from './gfx.js';
+import { THREE, mat, mesh, box, canvasTex, signTex, rand, pick, mergeGeos, mergeTree, blobShadow, TEX_SCALE, MAX_ANISOTROPY } from './gfx.js';
 
 /** The menu stage lives high above the road so nothing from the game shows through. */
 export const STAGE = { x: 0, y: 200, z: 0 };
@@ -27,9 +27,8 @@ export function createWorld({ scene, camera }) {
   road.castShadow = false;
   scene.add(road);
 
-  // Black stage floor either side of the road. It tags its own pixels so the glass pass can put wet reflections only here.
+  // Black stage floor either side of the road.
   const grassMat = new THREE.MeshLambertMaterial({ color: 0x141c30, flatShading: true });
-  markFloor(grassMat);
   for (const sx of [-1, 1]) {
     const grass = mesh(new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2), grassMat);
     grass.position.set(sx * 104, -0.02, -60);
