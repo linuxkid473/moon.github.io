@@ -8,9 +8,9 @@ export const STAGE = { x: 0, y: 200, z: 0 };
 export function createWorld({ scene, camera }) {
   /* ---------- road & sky-side props ---------- */
   const roadTex = canvasTex(128, 256, (g, w, h) => {
-    g.fillStyle = '#1550d6';
+    g.fillStyle = '#04060c';
     g.fillRect(0, 0, w, h);
-    g.fillStyle = '#d6ebff';
+    g.fillStyle = '#2f9bff';
     g.fillRect(4, 0, 6, h);
     g.fillRect(w - 10, 0, 6, h);
     g.fillRect(44, 0, 4, h / 2);     // dashed lane line, top half of each tile
@@ -21,14 +21,14 @@ export function createWorld({ scene, camera }) {
 
   const road = mesh(
     new THREE.PlaneGeometry(8, 200).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.16, metalness: 0.35 })   // wet asphalt: the lights glint off it
+    new THREE.MeshStandardMaterial({ map: roadTex, emissiveMap: roadTex, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.16, metalness: 0.35 })   // wet asphalt: the lights glint off it
   );
   road.position.set(0, 0, -60);
   road.castShadow = false;
   scene.add(road);
 
   // Black stage floor either side of the road.
-  const grassMat = new THREE.MeshLambertMaterial({ color: 0x141c30, flatShading: true });
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x0b1020, roughness: 0.2, metalness: 0.3, flatShading: true });
   for (const sx of [-1, 1]) {
     const grass = mesh(new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2), grassMat);
     grass.position.set(sx * 104, -0.02, -60);
@@ -326,7 +326,7 @@ export function createWorld({ scene, camera }) {
     const geos = [[], []];
     for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) geos[i % 2].push(new THREE.BoxGeometry(0.16, 0.16, 3).translate(sx * 4.6, 0.12, 20 - i * 10));
     for (let k = 0; k < 2; k++) edgeGroup.add(new THREE.Mesh(mergeGeos(geos[k]), mats[k]));
-    for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) reflection(edgeGroup, i % 2 ? 'white' : 'red', sx * 3.75, 20 - i * 10 - 1.5, 0.7, 4.5);   // the kerb lights glinting on the wet road
+    for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) { reflection(edgeGroup, i % 2 ? 'white' : 'red', sx * 3.75, 20 - i * 10 - 1.5, 0.7, 4.5); reflection(edgeGroup, i % 2 ? 'white' : 'red', sx * 4.9, 20 - i * 10 - 1.5, 1.1, 6); }   // the kerb lights glinting on the wet road
     scene.add(edgeGroup);
   }
 
@@ -434,6 +434,8 @@ export function createWorld({ scene, camera }) {
         reflection(a, 'red', -3, 0, 1.6, 12),               // the red lamp
         reflection(a, 'blue', 3, 0, 1.6, 12),               // the blue lamp
         reflection(a, 'white', -5.0, 0, 0.9, 9), reflection(a, 'white', 5.0, 0, 0.9, 9),   // the banners
+        reflection(a, 'blue', -5.8, 0, 1.6, 12), reflection(a, 'blue', 5.8, 0, 1.6, 12),   // the pylons, on the pavement
+        reflection(a, 'red', -8.2, 0, 3.2, 10), reflection(a, 'red', 8.2, 0, 3.2, 10),     // soft wash from the lit buildings
       ];
       mergeTree(a);   // the truss, lamp housings, lenses, sign and banners become a handful of meshes
       scene.add(a);
