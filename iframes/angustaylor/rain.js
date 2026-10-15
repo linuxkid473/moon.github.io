@@ -8,7 +8,7 @@ export function createRain(scene, dotTex) {
   const rainPos = new Float32Array(RAIN_N * 6);    // two ends per streak
   const rainHead = new Float32Array(RAIN_N * 3);   // the lower end of each streak
   for (let i = 0; i < RAIN_N; i++) { rainHead[i * 3] = rand(-16, 16); rainHead[i * 3 + 1] = rand(0, 16); rainHead[i * 3 + 2] = rand(-75, 14); }
-  const lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xc9d6ff, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  const lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xc9d6ff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   lines.geometry.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
   lines.frustumCulled = false;
   scene.add(lines);

@@ -386,7 +386,6 @@ async function boot() {
     S.glance = 0.7;
     W.coins += val;
     if (Math.floor(before / 5) !== Math.floor(S.taxCuts / 5)) saveWallet();
-    fx.burst(player.position.x, S.y + 1.5, 0, gold ? 0xffd34d : 0x7cfc9a, gold ? 26 : 9, { speed: 4, up: 3, life: 0.55 });
     for (const ms of [1, 10, 25, 50, 100, 150]) if (before < ms && S.taxCuts >= ms) news('tc' + ms, true);
     if (before < BUDGET_AT && S.taxCuts >= BUDGET_AT) { S.budgetT = BUDGET_SECS; popup('LIBERAL BUDGET!', '#7fb2ff'); audio.sfx.budget(); news('budget', true); }
     const call = STREAK_CALLS[S.streak];
@@ -945,7 +944,7 @@ async function boot() {
      Every ~0.75 s the average frame time is checked. If it is too slow the game gives things up in this order, and the
      picture stays sharp for as long as possible:
        stage 0  everything on
-       stage 1  no world rain or window drops (the lights and reflections always stay on)
+       stage 1-2 unused: the rain, window drops and lights always stay on
        stage 2  no post-processing: the scene is drawn straight to the screen at full resolution
        stage 3  only now does the render scale come down, in small steps, and never below MIN_SCALE
      After a long stretch of fast frames it tries to give things back, one step at a time, and if that is too slow
@@ -954,8 +953,8 @@ async function boot() {
   const MIN_SCALE = Math.min(1, MAX_SCALE), SLOW_MS = 24, FAST_MS = 19, RESTORE_AFTER = 25;
   let accT = 0, accN = 0, goodT = 0, stage = 0, settleT = 3, probingAt = 0, noRestoreUntil = 0;
   function applyStage() {
-    glass.setLevel(Math.min(stage, 2));
-    worldFx.lowDetail(stage >= 1);
+    glass.setLevel(0);   // rain and window drops never switch off; only the resolution gives way when the frame rate is low
+    worldFx.lowDetail(false);
   }
   function setScale(v) {
     renderScale = clamp(v, MIN_SCALE, MAX_SCALE);
@@ -974,8 +973,7 @@ async function boot() {
       goodT = 0;
       if (probingAt && now - probingAt < 8000) noRestoreUntil = now + 300000;   // giving something back was too much: leave it off for a while
       probingAt = 0;
-      if (stage < 2) { stage++; applyStage(); settleT = 2; }
-      else if (renderScale > MIN_SCALE + 0.01) { stage = 3; setScale(renderScale * 0.92); settleT = 2; }
+      if (renderScale > MIN_SCALE + 0.01) { stage = 3; setScale(renderScale * 0.92); settleT = 2; }
     } else if (avg < FAST_MS) {
       goodT += 0.75;
       if (goodT > RESTORE_AFTER && now > noRestoreUntil && (stage > 0 || renderScale < MAX_SCALE - 0.01)) {
