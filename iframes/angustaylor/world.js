@@ -21,7 +21,7 @@ export function createWorld({ scene, camera }) {
 
   const road = mesh(
     new THREE.PlaneGeometry(8, 200).rotateX(-Math.PI / 2),
-    new THREE.MeshLambertMaterial({ map: roadTex })
+    new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.16, metalness: 0.35 })   // wet asphalt: the lights glint off it
   );
   road.position.set(0, 0, -60);
   road.castShadow = false;
@@ -296,6 +296,29 @@ export function createWorld({ scene, camera }) {
     scene.add(wall);
   }
 
+  /* ---------- wet-road reflections: every light throws a long glowing streak towards the camera ---------- */
+  // Flat additive strips lying on the road, bright at the light and fading towards the viewer, softer at the sides.
+  const reflTex = canvasTex(32, 128, (g, w, h) => {
+    const v = g.createLinearGradient(0, 0, 0, h);
+    v.addColorStop(0, 'rgba(255,255,255,1)'); v.addColorStop(0.15, 'rgba(255,255,255,0.7)'); v.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = v; g.fillRect(0, 0, w, h);
+    g.globalCompositeOperation = 'destination-in';   // soften the sides
+    const hz = g.createLinearGradient(0, 0, w, 0);
+    hz.addColorStop(0, 'rgba(0,0,0,0)'); hz.addColorStop(0.5, 'rgba(0,0,0,1)'); hz.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = hz; g.fillRect(0, 0, w, h);
+  });
+  const reflMats = { red: 0xff3b4a, blue: 0x3d7bff, white: 0xcfe0ff }, reflBase = { red: 0.55, blue: 0.55, white: 0.4 };
+  for (const k in reflMats) reflMats[k] = new THREE.MeshBasicMaterial({ map: reflTex, color: reflMats[k], transparent: true, opacity: reflBase[k], blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  const reflGeo = (w, len) => new THREE.PlaneGeometry(w, len).rotateX(-Math.PI / 2).translate(0, 0, len / 2);   // runs from the light (z = 0) towards the camera
+  function reflection(parent, kind, x, z, w, len) {
+    const m = new THREE.Mesh(reflGeo(w, len), reflMats[kind]);
+    m.position.set(x, 0.045, z);
+    m.userData.keep = true;
+    m.renderOrder = 2;
+    parent.add(m);
+    return m;
+  }
+
   /* ---------- glowing edge lights that scroll past, so you can feel the speed ---------- */
   const edgeGroup = new THREE.Group();
   {
@@ -303,6 +326,7 @@ export function createWorld({ scene, camera }) {
     const geos = [[], []];
     for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) geos[i % 2].push(new THREE.BoxGeometry(0.16, 0.16, 3).translate(sx * 4.6, 0.12, 20 - i * 10));
     for (let k = 0; k < 2; k++) edgeGroup.add(new THREE.Mesh(mergeGeos(geos[k]), mats[k]));
+    for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) reflection(edgeGroup, i % 2 ? 'white' : 'red', sx * 3.75, 20 - i * 10 - 1.5, 0.7, 4.5);   // the kerb lights glinting on the wet road
     scene.add(edgeGroup);
   }
 
@@ -405,6 +429,12 @@ export function createWorld({ scene, camera }) {
         a.add(pool);
         a.userData.beams.push({ pivot, mat: bm, phase: i * 1.3 + k * 2.1, x, pool });
       }
+      a.userData.refl = [
+        reflection(a, 'blue', 0, 0, 6.2, 11),               // the chasing bulb bar and LED sign
+        reflection(a, 'red', -3, 0, 1.6, 12),               // the red lamp
+        reflection(a, 'blue', 3, 0, 1.6, 12),               // the blue lamp
+        reflection(a, 'white', -5.0, 0, 0.9, 9), reflection(a, 'white', 5.0, 0, 0.9, 9),   // the banners
+      ];
       mergeTree(a);   // the truss, lamp housings, lenses, sign and banners become a handful of meshes
       scene.add(a);
       arches.push(a);
@@ -604,6 +634,7 @@ export function createWorld({ scene, camera }) {
       cp.setXYZ(i, cp.getX(i) + Math.sin(tt * 1.5 + i) * 0.4 * dt, y, z);
     }
     cp.needsUpdate = true;
+    for (const k in reflMats) reflMats[k].opacity = reflBase[k] * (0.82 + 0.18 * Math.sin(tt * 2.3 + k.length * 2));   // the reflections ripple a little in the rain
     const bulbPhase = Math.floor(tt * 3);
     if (bulbPhase !== lastBulbPhase) { lastBulbPhase = bulbPhase; setBulbs(bulbPhase); }   // the chasing bulbs (re-uploaded only when the pattern steps)
     for (const a of arches) {   // the truss arches scroll past, and their red beams sweep and pulse
@@ -614,7 +645,7 @@ export function createWorld({ scene, camera }) {
         b.pivot.rotation.z = Math.sin(tt * 0.5 + b.phase) * 0.5;
         b.pivot.rotation.x = Math.sin(tt * 0.38 + b.phase * 1.6) * 0.35;
         b.mat.opacity = (0.05 + 0.04 * (Math.sin(tt * 1.1 + b.phase * 2) * 0.5 + 0.5)) * near;
-        b.pool.visible = !lowDetailOn && near > 0.05;
+        b.pool.visible = near > 0.05;
         b.pool.position.set(b.x + Math.tan(b.pivot.rotation.z) * 6.7, 0.04, -Math.tan(b.pivot.rotation.x) * 6.7);
       }
     }
@@ -625,7 +656,7 @@ export function createWorld({ scene, camera }) {
   function lowDetail(on = true) {
     if (on === lowDetailOn) return;
     lowDetailOn = on;
-    for (const a of arches) for (const b of a.userData.beams) { b.pivot.visible = !on; b.pool.visible = !on; }
+    /* the lights and their reflections stay on: switching them off made the scene look like the power had gone out */
   }
 
   return { T, scroll, stage, stageMode, stageAnimate, menuCamera, lowDetail, dotTex };

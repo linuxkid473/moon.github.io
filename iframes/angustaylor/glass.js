@@ -145,7 +145,8 @@ const WATER_FRAG = `
       if (uLite < 0.5) statics(p, 45.0, 71.0, 0.88, 0.22, 0.55, 0.0, w);   // small but clearly visible drops, spread over the whole screen
       statics(p, 28.0, 13.0, 0.965, 0.15, 0.42, 0.22, w);                   // the odd medium drop
       statics(p, 11.0, 29.0, 0.996, 0.14, 0.30, 0.22, w);                   // a rare big one
-      // (no running drops with wiggly tails any more: only round drops that sit on the glass)
+      slide(p, 7.0, 0.0, 0.05, 1.2, 0.5, w);                                // drops running down the glass, wiping a trail
+      slide(p, 12.0, 41.0, 0.075, 0.8, 0.42, w);                            // finer, quicker runners
       // how the water bends the picture here: a drop's lens, or the thin sideways bend along a wet streak
       vec2 g = w.hgt > 0.0 ? w.grad : vec2(w.tg, 0.0);
       // packed into two 8-bit targets (neutral value 0.5 for the signed ones, so blending towards "no water" fades smoothly)
@@ -229,13 +230,13 @@ export function createGlass({ renderer, scene, camera, rain }) {
   const VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
   const waterMat = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
-    uniforms: { ...shared, uStorm: { value: 0 }, uLite: { value: 0 }, uDrop: { value: 0.16 } },
+    uniforms: { ...shared, uStorm: { value: 0 }, uLite: { value: 0 }, uDrop: { value: 0.03 } },
     vertexShader: VERT, fragmentShader: WATER_FRAG, depthTest: false, depthWrite: false,
   });
   const compMat = new THREE.ShaderMaterial({
     uniforms: {
       ...shared, tScene: { value: sceneRT.texture }, tWaterA: { value: waterRT.texture[0] }, tWaterB: { value: waterRT.texture[1] },
-      uRain: { value: 1 }, uSharp: { value: 0.7 }, uDark: { value: 0.16 },
+      uRain: { value: 1 }, uSharp: { value: 0.7 }, uDark: { value: 0.28 },
     },
     vertexShader: VERT, fragmentShader: COMP_FRAG, depthTest: false, depthWrite: false,
   });
@@ -272,7 +273,7 @@ export function createGlass({ renderer, scene, camera, rain }) {
       const drops = settings.glass && fancy;
       shared.uTime.value = rainClock;
       waterMat.uniforms.uStorm.value = storm;
-      waterMat.uniforms.uLite.value = 1;   // the two finest bead layers are always skipped: they cost the most and show the least
+      waterMat.uniforms.uLite.value = 0;   // all bead layers on
       const u = compMat.uniforms;
       u.uRain.value = drops ? 1 : 0;           // drops on the window
       if (drops) {   // the water field, at low resolution

@@ -945,13 +945,13 @@ async function boot() {
      Every ~0.75 s the average frame time is checked. If it is too slow the game gives things up in this order, and the
      picture stays sharp for as long as possible:
        stage 0  everything on
-       stage 1  no rain, window drops or sweeping beams (cheap, the picture is as crisp as before)
+       stage 1  no world rain or window drops (the lights and reflections always stay on)
        stage 2  no post-processing: the scene is drawn straight to the screen at full resolution
        stage 3  only now does the render scale come down, in small steps, and never below MIN_SCALE
      After a long stretch of fast frames it tries to give things back, one step at a time, and if that is too slow
      it puts them away again and leaves them alone for several minutes. */
   const noAdapt = /noadapt/.test(location.hash + location.search);
-  const MIN_SCALE = Math.min(1, MAX_SCALE), SLOW_MS = 18.5, FAST_MS = 17.4, RESTORE_AFTER = 25;
+  const MIN_SCALE = Math.min(1, MAX_SCALE), SLOW_MS = 24, FAST_MS = 19, RESTORE_AFTER = 25;
   let accT = 0, accN = 0, goodT = 0, stage = 0, settleT = 3, probingAt = 0, noRestoreUntil = 0;
   function applyStage() {
     glass.setLevel(Math.min(stage, 2));

@@ -2,19 +2,19 @@
 // The drops on the window and the wet floor are in glass.js.
 import { THREE, rand } from './gfx.js';
 
-const RAIN_N = 60, SPL_N = 120;   // a very light drizzle
+const RAIN_N = 260, SPL_N = 200;   // steady rain
 
 export function createRain(scene, dotTex) {
   const rainPos = new Float32Array(RAIN_N * 6);    // two ends per streak
   const rainHead = new Float32Array(RAIN_N * 3);   // the lower end of each streak
   for (let i = 0; i < RAIN_N; i++) { rainHead[i * 3] = rand(-16, 16); rainHead[i * 3 + 1] = rand(0, 16); rainHead[i * 3 + 2] = rand(-75, 14); }
-  const lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xc9d6ff, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  const lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xc9d6ff, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   lines.geometry.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
   lines.frustumCulled = false;
   scene.add(lines);
 
   const splashLife = new Float32Array(SPL_N), splashPos = new Float32Array(SPL_N * 3).fill(-999), splashCol = new Float32Array(SPL_N * 3);
-  const splashes = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 0.14, map: dotTex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  const splashes = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 0.24, map: dotTex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   splashes.geometry.setAttribute('position', new THREE.BufferAttribute(splashPos, 3));
   splashes.geometry.setAttribute('color', new THREE.BufferAttribute(splashCol, 3));
   splashes.frustumCulled = false;
@@ -29,7 +29,7 @@ export function createRain(scene, dotTex) {
       for (let i = 0; i < RAIN_N; i++) {
         let x = rainHead[i * 3], y = rainHead[i * 3 + 1] - fall * dt, z = rainHead[i * 3 + 2] + speed * dt;
         if (y < 0) {   // it has hit the ground: now and then a splash on the road
-          if (Math.abs(x) < 6.5 && z < 6 && z > -45 && Math.random() < 0.015) { const k = splashNext++ % SPL_N; splashPos[k * 3] = x; splashPos[k * 3 + 1] = 0.05; splashPos[k * 3 + 2] = z; splashLife[k] = 0.28; }
+          if (Math.abs(x) < 6.5 && z < 6 && z > -45 && Math.random() < 0.08) { const k = splashNext++ % SPL_N; splashPos[k * 3] = x; splashPos[k * 3 + 1] = 0.05; splashPos[k * 3 + 2] = z; splashLife[k] = 0.28; }
           y += 16; x = rand(-16, 16);
         }
         if (z > 14) z -= 89;
