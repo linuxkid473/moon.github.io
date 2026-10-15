@@ -211,6 +211,7 @@ const COMP_FRAG = `
       // a gentle vignette pulls the eye to the runner
       vec2 vc = (vUv - 0.5) * vec2(1.15, 1.0) * 2.0;
       col *= 1.0 - 0.28 * smoothstep(0.55, 1.45, length(vc));
+      col = mix(col, col * vec3(0.78, 0.95, 1.3) + vec3(0.0, 0.01, 0.05), 0.65);   // an overall blue hue
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
       #include <colorspace_fragment>
     }`;

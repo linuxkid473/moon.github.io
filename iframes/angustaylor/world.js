@@ -8,9 +8,9 @@ export const STAGE = { x: 0, y: 200, z: 0 };
 export function createWorld({ scene, camera }) {
   /* ---------- road & sky-side props ---------- */
   const roadTex = canvasTex(128, 256, (g, w, h) => {
-    g.fillStyle = '#1c2536';
+    g.fillStyle = '#1550d6';
     g.fillRect(0, 0, w, h);
-    g.fillStyle = '#5b9bff';
+    g.fillStyle = '#d6ebff';
     g.fillRect(4, 0, 6, h);
     g.fillRect(w - 10, 0, 6, h);
     g.fillRect(44, 0, 4, h / 2);     // dashed lane line, top half of each tile
@@ -307,7 +307,7 @@ export function createWorld({ scene, camera }) {
     hz.addColorStop(0, 'rgba(0,0,0,0)'); hz.addColorStop(0.5, 'rgba(0,0,0,1)'); hz.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = hz; g.fillRect(0, 0, w, h);
   });
-  const reflMats = { red: 0xff3b4a, blue: 0x3d7bff, white: 0xcfe0ff }, reflBase = { red: 0.55, blue: 0.55, white: 0.4 };
+  const reflMats = { red: 0x4aa8ff, blue: 0x3d7bff, white: 0xcfe0ff }, reflBase = { red: 0.55, blue: 0.55, white: 0.4 };
   for (const k in reflMats) reflMats[k] = new THREE.MeshBasicMaterial({ map: reflTex, color: reflMats[k], transparent: true, opacity: reflBase[k], blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
   const reflGeo = (w, len) => new THREE.PlaneGeometry(w, len).rotateX(-Math.PI / 2).translate(0, 0, len / 2);   // runs from the light (z = 0) towards the camera
   function reflection(parent, kind, x, z, w, len) {
@@ -322,7 +322,7 @@ export function createWorld({ scene, camera }) {
   /* ---------- glowing edge lights that scroll past, so you can feel the speed ---------- */
   const edgeGroup = new THREE.Group();
   {
-    const mats = [new THREE.MeshBasicMaterial({ color: 0xff3b4a }), new THREE.MeshBasicMaterial({ color: 0xe8eeff })];
+    const mats = [new THREE.MeshBasicMaterial({ color: 0x4aa8ff }), new THREE.MeshBasicMaterial({ color: 0xe8eeff })];
     const geos = [[], []];
     for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) geos[i % 2].push(new THREE.BoxGeometry(0.16, 0.16, 3).translate(sx * 4.6, 0.12, 20 - i * 10));
     for (let k = 0; k < 2; k++) edgeGroup.add(new THREE.Mesh(mergeGeos(geos[k]), mats[k]));
@@ -343,7 +343,7 @@ export function createWorld({ scene, camera }) {
       let seed = 5; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
       for (let gx = 0; gx < 8; gx++) for (let gy = 0; gy < 5; gy++) {   // lit windows
         const x = gx * 64 + 14, y = gy * 48 + 14, v = r();
-        if (v < 0.42) { g.fillStyle = v < 0.07 ? '#dbe8ff' : v < 0.12 ? '#4f93ff' : v < 0.2 ? '#ff6a78' : '#9ec5ff'; g.fillRect(x, y, 30, 22); g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + 14, y, 2, 22); g.fillRect(x, y + 10, 30, 2); }
+        if (v < 0.42) { g.fillStyle = v < 0.07 ? '#dbe8ff' : v < 0.12 ? '#4f93ff' : v < 0.2 ? '#5ab4ff' : '#9ec5ff'; g.fillRect(x, y, 30, 22); g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + 14, y, 2, 22); g.fillRect(x, y + 10, 30, 2); }
       }
       g.fillStyle = '#3d8bff'; g.fillRect(40, 238, 150, 5);   // a neon strip
     });
@@ -364,7 +364,7 @@ export function createWorld({ scene, camera }) {
   const ARCH_N = 5, ARCH_STEP = 24, BULBS = 9;
   const arches = [];
   let bulbGeo = null, glow = null, lastBulbPhase = -1;
-  const BULB_COLS = [[0.72, 0.82, 1], [1, 0.23, 0.29], [0.23, 0.15, 0.19], [0.23, 0.15, 0.19]];   // pale pink, red, then dark: the chase pattern
+  const BULB_COLS = [[0.72, 0.85, 1], [0.2, 0.55, 1], [0.1, 0.16, 0.3], [0.1, 0.16, 0.3]];   // pale pink, red, then dark: the chase pattern
   function setBulbs(ph) {
     const c = bulbGeo.attributes.color;
     for (let j = 0; j < BULBS; j++) { const col = BULB_COLS[(j + ph) % 4]; for (let v = 0; v < 24; v++) c.setXYZ(j * 24 + v, col[0], col[1], col[2]); }
@@ -416,7 +416,7 @@ export function createWorld({ scene, camera }) {
         housing.position.set(x, 7.0, 0);
         const l = mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 8), lens);
         l.position.set(x, 6.76, 0);
-        const bm = new THREE.MeshBasicMaterial({ color: [0xff2a3a, 0x2a6aff][k], transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+        const bm = new THREE.MeshBasicMaterial({ color: [0x2aa0ff, 0x2a6aff][k], transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
         const pivot = new THREE.Group();
         pivot.position.set(x, 6.75, 0);
         pivot.add(new THREE.Mesh(beamGeo, bm));
@@ -645,7 +645,7 @@ export function createWorld({ scene, camera }) {
         b.pivot.rotation.z = Math.sin(tt * 0.5 + b.phase) * 0.5;
         b.pivot.rotation.x = Math.sin(tt * 0.38 + b.phase * 1.6) * 0.35;
         b.mat.opacity = (0.05 + 0.04 * (Math.sin(tt * 1.1 + b.phase * 2) * 0.5 + 0.5)) * near;
-        b.pool.visible = near > 0.05;
+        b.pool.visible = false;   // no spots of light on the road
         b.pool.position.set(b.x + Math.tan(b.pivot.rotation.z) * 6.7, 0.04, -Math.tan(b.pivot.rotation.x) * 6.7);
       }
     }
