@@ -32,14 +32,21 @@ export function box(w, h, d, material, x = 0, y = 0, z = 0) {
   return m;
 }
 
-export function canvasTex(w, h, draw) {
+/** Every canvas texture is painted at this many pixels per drawing unit, so text and lines stay sharp up close and on big LED screens. Drawing code keeps working in the logical w x h. */
+export const TEX_SCALE = 2;
+export const MAX_ANISOTROPY = 16;   // the GPU clamps this to what it supports
+export function canvasTex(w, h, draw, scale = TEX_SCALE) {
+  const s = Math.min(scale, 4096 / Math.max(w, h));
   const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d'), w, h);
+  c.width = Math.round(w * s);
+  c.height = Math.round(h * s);
+  const g = c.getContext('2d');
+  g.scale(s, s);
+  draw(g, w, h);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = MAX_ANISOTROPY;
+  tex.generateMipmaps = true;
   return tex;
 }
 
@@ -84,4 +91,83 @@ export function loadImage(src) {
     img.onerror = () => resolve(null);
     img.src = src;
   });
+}
+
+/** A cheap soft shadow: a dark disc flat on the road. It replaces real shadow mapping, which cost a second pass over the whole scene. */
+const BLOB_GEO = new THREE.CircleGeometry(1, 16).rotateX(-Math.PI / 2);
+const blobMats = new Map();
+export function blobShadow(rx, rz, opacity = 0.4) {
+  if (!blobMats.has(opacity)) blobMats.set(opacity, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity, depthWrite: false }));
+  const m = new THREE.Mesh(BLOB_GEO, blobMats.get(opacity));
+  m.scale.set(rx, 1, rz);
+  m.position.y = 0.035;
+  m.userData.keep = true;   // not baked into its neighbours (it is a different, transparent material)
+  m.renderOrder = 1;
+  return m;
+}
+
+/* ---------- draw-call savers ---------- */
+/** Bake a list of indexed geometries (already in their final space) into one. Carries position, normal, uv and, when every part has it, colour. */
+export function mergeGeos(list) {
+  const withColor = list.every((g) => g.attributes.color);
+  let vN = 0, iN = 0;
+  for (const g of list) { vN += g.attributes.position.count; iN += g.index.count; }
+  const pos = new Float32Array(vN * 3), nor = new Float32Array(vN * 3), uv = new Float32Array(vN * 2), idx = new Uint32Array(iN);
+  const col = withColor ? new Float32Array(vN * 3) : null;
+  let v = 0, i = 0;
+  for (const g of list) {
+    pos.set(g.attributes.position.array, v * 3);
+    nor.set(g.attributes.normal.array, v * 3);
+    uv.set(g.attributes.uv.array, v * 2);
+    if (col) col.set(g.attributes.color.array, v * 3);
+    for (let k = 0; k < g.index.count; k++) idx[i + k] = g.index.array[k] + v;
+    v += g.attributes.position.count;
+    i += g.index.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  if (col) out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  return out;
+}
+
+/**
+ * Merge a group's rigid child meshes that share a material into one mesh each. Joint groups stay separate,
+ * so animation is unaffected. A mesh with `userData.keep` (it moves on its own), a material array, or no index is left alone.
+ */
+export function mergeStatic(group) {
+  const byMat = new Map();
+  for (const ch of [...group.children]) {
+    if (!ch.isMesh || Array.isArray(ch.material) || !ch.geometry.index || ch.userData.keep || ch.name) continue;
+    ch.updateMatrix();
+    const geo = ch.geometry.clone().applyMatrix4(ch.matrix);
+    if (!byMat.has(ch.material)) byMat.set(ch.material, { geos: [], shadow: false });
+    const e = byMat.get(ch.material);
+    e.geos.push(geo);
+    e.shadow ||= ch.castShadow;
+    group.remove(ch);
+  }
+  for (const [material, { geos, shadow }] of byMat) {
+    const m = new THREE.Mesh(geos.length > 1 ? mergeGeos(geos) : geos[0], material);
+    m.castShadow = shadow;
+    m.receiveShadow = true;
+    group.add(m);
+  }
+}
+/** mergeStatic on a group and every group below it. */
+export function mergeTree(root) {
+  const gs = [];
+  root.traverse((n) => { if (n.isGroup) gs.push(n); });
+  gs.forEach(mergeStatic);
+}
+
+/**
+ * Make a material tag its own pixels (alpha 0.5, everything else is 1.0) so the final pass knows which pixels are
+ * reflective floor, instead of guessing from darkness (which also caught dark clothes).
+ */
+export function markFloor(m) {
+  m.onBeforeCompile = (shader) => { shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', 'gl_FragColor = vec4( outgoingLight, 0.5 );'); };
+  m.customProgramCacheKey = () => 'floor-mark';
 }

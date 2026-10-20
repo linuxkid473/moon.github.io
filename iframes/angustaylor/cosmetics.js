@@ -4,8 +4,9 @@
 // drag, fixed sub-steps, and collision with his body (torso, hips and legs, head, shoulders, swinging
 // arms) and the ground. It is stepped once per frame AFTER the player's final pose, so the tie point
 // is always exactly on his collar.
-import { THREE, mat, mesh, box, canvasTex } from './gfx.js';
+import { THREE, mat, mesh, box, canvasTex, TEX_SCALE, MAX_ANISOTROPY } from './gfx.js';
 import { S, W } from './state.js';
+import { SPINE_Y } from './person.js';
 
 export function createCosmetics({ scene, player, camera }) {
   function balloonTex() {
@@ -28,11 +29,13 @@ export function createCosmetics({ scene, player, camera }) {
       }
     };
     const c = document.createElement('canvas');
-    c.width = 512; c.height = 256;
+    c.width = 512 * TEX_SCALE; c.height = 256 * TEX_SCALE;
     const g = c.getContext('2d');
+    g.scale(TEX_SCALE, TEX_SCALE);
     draw(g, 512, 256, null);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = MAX_ANISOTROPY;
     if (window.BALLOON_LOGO) {
       const img = new Image();
       img.onload = () => { draw(g, 512, 256, img); tex.needsUpdate = true; };
@@ -41,6 +44,7 @@ export function createCosmetics({ scene, player, camera }) {
     return tex;
   }
 
+  const spine = player.getObjectByName('spine');   // everything on the upper body is parented here, so it moves with the chest
   const costume = { tag: [], balloon: [], tape: [], cap: [], hivis: [], sash: [], cape: [], megaphone: [], scissors: [], sausage: [], sign: [] };
   {
     // speech bubble to the right of him (lives in the scene so it doesn't spin when he turns)
@@ -72,9 +76,10 @@ export function createCosmetics({ scene, player, camera }) {
     // diagonal strips that bind his arms to his sides and his legs together
     const strip = (w, d, y, tilt) => {
       const m = mesh(new THREE.BoxGeometry(w, 0.085, d), red);
-      m.position.set(0, y, 0);
+      const onChest = y > SPINE_Y;   // the chest turns and leans with the body; the legs don't
+      m.position.set(0, onChest ? y - SPINE_Y : y, 0);
       m.rotation.z = tilt;
-      player.add(m);
+      (onChest ? spine : player).add(m);
       costume.tape.push(m);
     };
     [[1.52, 0.14], [1.76, -0.14], [2.0, 0.14]].forEach(([y, t]) => strip(1.06, 0.44, y, t));
@@ -110,9 +115,9 @@ export function createCosmetics({ scene, player, camera }) {
     const stripeMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, emissive: 0x444444, flatShading: true, side: THREE.DoubleSide });
     const openBand = (rt, rb, h, y, m) => {
       const b = mesh(new THREE.CylinderGeometry(rt, rb, h, 5, 1, true, Math.PI / 6, (5 * Math.PI) / 3), m);
-      b.position.y = y;
+      b.position.y = y - SPINE_Y;
       b.scale.z = 0.57;
-      add('hivis', player, b);
+      add('hivis', spine, b);
     };
     openBand(0.35, 0.268, 0.74, 1.82, vestMat);
     openBand(0.338, 0.326, 0.08, 2.0, stripeMat);
@@ -120,10 +125,10 @@ export function createCosmetics({ scene, player, camera }) {
 
     // blue and gold sash across the chest
     const sashG = new THREE.Group();
-    sashG.position.y = 1.7;
+    sashG.position.y = 1.7 - SPINE_Y;
     sashG.rotation.z = 0.55;
     sashG.add(box(0.22, 1.0, 0.46, blue, 0, 0, 0), box(0.035, 1.0, 0.47, gold, 0.115, 0, 0), box(0.035, 1.0, 0.47, gold, -0.115, 0, 0));
-    add('sash', player, sashG);
+    add('sash', spine, sashG);
 
     // free-market cape: a proper cloth simulation. Verlet particles joined by structure, shear and
     // bend links, per-triangle aerodynamic wind and drag, sub-stepping, and collision with his body
@@ -182,8 +187,8 @@ export function createCosmetics({ scene, player, camera }) {
     capeRoot.add(capeMesh);
     scene.add(capeRoot);
     costume.cape.push(capeRoot);
-    add('cape', player, mesh(new THREE.SphereGeometry(0.08, 5, 3), gold)).position.set(0, 2.27, -0.14);   // clasp at the collar
-    add('cape', player, box(0.34, 0.05, 0.05, gold, 0, 2.27, -0.15));
+    add('cape', spine, mesh(new THREE.SphereGeometry(0.08, 5, 3), gold)).position.set(0, 2.27 - SPINE_Y, -0.14);   // clasp at the collar
+    add('cape', spine, box(0.34, 0.05, 0.05, gold, 0, 2.27 - SPINE_Y, -0.15));
 
     const _p = new THREE.Vector3(), _q = new THREE.Vector3(), _n = new THREE.Vector3(), _e = new THREE.Vector3();
     const _wind = new THREE.Vector3(), _rel = new THREE.Vector3(), _inv = new THREE.Matrix4();
@@ -225,7 +230,7 @@ export function createCosmetics({ scene, player, camera }) {
       player.updateMatrixWorld(true);
       _inv.copy(player.matrixWorld).invert();
       const pins = [];   // along the back of his collar; column 0 is screen-left so the lettering reads correctly
-      for (let c = 0; c < CAPE_COLS; c++) pins.push(player.localToWorld(new THREE.Vector3(rest(0, c).x, 2.28, -0.15)));
+      for (let c = 0; c < CAPE_COLS; c++) pins.push(spine.localToWorld(new THREE.Vector3(rest(0, c).x, 2.28 - SPINE_Y, -0.15)));
       if (!ready) {
         for (let r = 0; r < CAPE_ROWS; r++) for (let c = 0; c < CAPE_COLS; c++) {
           const i = ci(r, c), q = rest(r, c);
@@ -381,7 +386,37 @@ export function createCosmetics({ scene, player, camera }) {
     if (!cape.visible) { cape.userData.reset(); return; }
     if (S.mode !== 'paused') cape.userData.step(dt, performance.now() / 1000);
   }
+  // the consultant's blame shield: a dark Liberal-blue bubble with a hexagon grid, which flares when it cracks something
+  // open and flickers as it runs out
+  const hexTex = canvasTex(256, 256, (g, w, h) => {
+    g.strokeStyle = '#ffffff'; g.lineWidth = 4; g.lineJoin = 'round';
+    const r = 24, hx = r * 1.5, hy = r * Math.sqrt(3);
+    for (let col = -1; col < w / hx + 1; col++) for (let row = -1; row < h / hy + 1; row++) {
+      const cx = col * hx, cy = row * hy + (col % 2 ? hy / 2 : 0);
+      g.beginPath();
+      for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+      g.closePath(); g.stroke();
+    }
+  }, 1);
+  hexTex.wrapS = hexTex.wrapT = THREE.RepeatWrapping;
+  hexTex.repeat.set(5, 3);
+  const shield = new THREE.Group();
+  shield.position.y = 1.5;
+  shield.visible = false;
+  const shieldFill = new THREE.Mesh(new THREE.SphereGeometry(1.5, 22, 14), new THREE.MeshBasicMaterial({ color: 0x123c9a, transparent: true, opacity: 0.26, depthWrite: false, side: THREE.DoubleSide }));
+  const shieldGrid = new THREE.Mesh(new THREE.SphereGeometry(1.53, 22, 14), new THREE.MeshBasicMaterial({ map: hexTex, color: 0x4a7ff0, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending }));
+  shield.add(shieldFill, shieldGrid);
+  player.add(shield);
+  let shieldPulse = 0;
+
   function animateCosmetics(dt = 1 / 60) {
+    shield.visible = S.shield > 0 && (S.shieldT > 2.5 || Math.floor(S.shieldT * 9) % 2 === 0);   // it flickers for its last 2.5 s
+    shieldGrid.rotation.y += dt * 0.7;
+    shieldPulse = Math.max(0, shieldPulse - dt * 3.5);
+    shield.scale.setScalar(1 + 0.18 * shieldPulse);
+    shieldGrid.material.color.setRGB(0.29 + 0.6 * shieldPulse, 0.5 + 0.45 * shieldPulse, 0.94 + 0.06 * shieldPulse);   // flares white-blue on an impact
+    const heldScissors = costume.scissors[0];   // the scissors appear in his hand while the ribbon-cutting lasts
+    if (heldScissors) heldScissors.visible = !!W.equipped.scissors || S.cutT > 0;
     const t = performance.now() / 1000, b = costume.balloon[0];
     b.position.y = 3.7 + Math.sin(t * 2) * 0.08;
     b.rotation.z = Math.sin(t * 1.3) * 0.12;
@@ -403,5 +438,6 @@ export function createCosmetics({ scene, player, camera }) {
     stepCape,
     animate: animateCosmetics,
     resetCape: () => costume.cape[0].userData.reset(),
+    shieldPulse: () => { shieldPulse = 1; },
   };
 }

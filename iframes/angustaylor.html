@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-<meta name="description" content="Angus Taylah: Fighting Taxes. A low-poly 3D runner. Dodge the taxes, the red tape and the bosses." />
-<meta name="theme-color" content="#2a0814" />
-<title>Angus Taylah: Fighting Taxes</title>
+<meta name="description" content="Angus Taylah: Fighting Taxes, the new 3D edition. A low-poly 3D runner in the rain. Dodge the taxes, the red tape and the bosses." />
+<meta name="theme-color" content="#06142e" />
+<title>Angus Taylah: Fighting Taxes (New 3D Edition)</title>
 <link rel="modulepreload" href="angustaylor/vendor/three.module.min.js" />
 <link rel="modulepreload" href="angustaylor/main.js" />
 <link rel="modulepreload" href="angustaylor/gfx.js" />
@@ -16,16 +16,18 @@
 <link rel="modulepreload" href="angustaylor/cosmetics.js" />
 <link rel="modulepreload" href="angustaylor/world.js" />
 <link rel="modulepreload" href="angustaylor/fx.js" />
+<link rel="modulepreload" href="angustaylor/glass.js" />
+<link rel="modulepreload" href="angustaylor/rain.js" />
 <link rel="modulepreload" href="angustaylor/ticker.js" />
 <link rel="preload" as="image" href="angustaylor/faces/angus.webp" />
 <style>
   :root {
-    --blue: #1f4fb8; --navy: #0b1d3a; --gold: #d4a017; --red: #c8102e; --ink: #1b2a41;
+    --blue: #1f4fb8; --navy: #0b1d3a; --gold: #d4a017; --red: #c8102e; --accent: #1f4fb8; --ink: #1b2a41;
     --card: #ffffff; --card-ink: #1b2a41; --muted: rgba(27, 42, 65, .62);
   }
   html, body {
     margin: 0; height: 100%; overflow: hidden;
-    background: #2a0814;
+    background: #06142e;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
   }
@@ -54,6 +56,10 @@
     position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: none;
     background: linear-gradient(90deg, #1f4fb8, #3f7bff); padding: 6px 14px; border-radius: 999px; font-size: 14px; letter-spacing: .06em; border: 2px solid var(--gold);
   }
+  #powers {
+    position: fixed; top: calc(52px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: none; z-index: 2; white-space: nowrap;
+    background: rgba(10, 25, 50, .72); color: #fff; padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 800; border: 2px solid #2a5cc8; pointer-events: none;
+  }
   .iconBtn {
     position: fixed; z-index: 4; margin: 0; padding: 0; width: 38px; height: 38px; border-radius: 12px; font-size: 16px;
     background: rgba(0, 0, 0, .38); color: #fff; border: 1px solid rgba(255, 255, 255, .25); display: none; align-items: center; justify-content: center; cursor: pointer;
@@ -79,7 +85,7 @@
   #toast {
     position: fixed; z-index: 3; top: calc(84px + env(safe-area-inset-top, 0px)); left: 50%; opacity: 0; pointer-events: none;
     display: flex; align-items: center; gap: 12px; padding: 8px 18px 8px 10px; border-radius: 999px; color: #fff;
-    background: linear-gradient(90deg, #7a0b1c, #c8102e); border: 2px solid #ffd34d; box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+    background: linear-gradient(90deg, #0b2f86, #c8102e); border: 2px solid #ffd34d; box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
     transform: translate(-50%, -20px); max-width: calc(100vw - 24px); box-sizing: border-box;
   }
   #toast.show { animation: toast 2.6s ease-out forwards; }
@@ -101,6 +107,9 @@
   @keyframes count { from { transform: scale(1.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   #flash { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, rgba(255, 0, 30, 0) 35%, rgba(255, 0, 30, .6) 100%); }
   #flash.on { animation: flash .55s ease-out; }
+  #blast { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at 50% 55%, rgba(255, 250, 225, .95) 0%, rgba(255, 175, 70, .7) 32%, rgba(255, 95, 0, .28) 72%, rgba(255, 60, 0, 0) 100%); }
+  #blast.on { animation: blast .8s ease-out; }
+  @keyframes blast { 0% { opacity: 0; } 7% { opacity: 1; } 100% { opacity: 0; } }
   @keyframes flash { from { opacity: 1; } to { opacity: 0; } }
 
   /* ---------- overlays and cards ---------- */
@@ -120,6 +129,10 @@
   }
   @keyframes cardIn { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
   .card h1 { margin: 0; font-size: 31px; line-height: 1; letter-spacing: .5px; color: var(--blue); font-weight: 900; }
+  .edition {
+    display: inline-block; margin: 0 0 8px; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 900; letter-spacing: .22em; color: #3a2a00;
+    background: linear-gradient(90deg, #f6d365, #d4a017); box-shadow: 0 2px 0 rgba(0, 0, 0, .2);
+  }
   .card h1 small { display: block; font-size: 14px; letter-spacing: .32em; color: var(--red); margin-top: 6px; }
   .card h2 { margin: 0 0 10px; color: var(--blue); font-size: 26px; }
   .tag { margin: 10px 0 12px; color: var(--muted); font-size: 14px; }
@@ -160,9 +173,9 @@
   @keyframes tk { from { transform: translateX(var(--vw, 100vw)); } to { transform: translateX(-100%); } }
 
   /* ---------- loading and errors ---------- */
-  #loader, #fatal { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(circle at 50% 35%, #5a1226, #1a0610); color: #fff; text-align: center; padding: 24px; box-sizing: border-box; }
+  #loader, #fatal { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(circle at 50% 35%, #10306e, #040c1e); color: #fff; text-align: center; padding: 24px; box-sizing: border-box; }
   #loader h1 { margin: 0; font-size: 30px; letter-spacing: .04em; }
-  #loader h1 small { display: block; color: #ff8a98; font-size: 14px; letter-spacing: .32em; margin-top: 6px; }
+  #loader h1 small { display: block; color: #3a6fe0; font-size: 14px; letter-spacing: .32em; margin-top: 6px; }
   .bar { width: min(280px, 70vw); height: 8px; border-radius: 99px; background: rgba(255, 255, 255, .18); overflow: hidden; }
   #loadBar { width: 6%; height: 100%; background: linear-gradient(90deg, #ffd34d, #fff); transition: width .25s; }
   #fatal p { max-width: 420px; line-height: 1.5; }
@@ -194,16 +207,19 @@
   <div id="hudRight"><div id="best">Best 0</div></div>
 </div>
 <div id="budget" aria-live="polite"></div>
+<div id="powers" aria-live="polite"></div>
 <button id="pauseBtn" class="iconBtn" aria-label="Pause">II</button>
 <button id="muteBtn" class="iconBtn" aria-label="Mute">🔊</button>
 <div id="fx" aria-live="polite"></div>
 <div id="flash"></div>
+<div id="blast"></div>
 <div id="toast"><img id="toastImg" alt="" /><div><b id="toastName"></b><span id="toastMsg"></span></div></div>
 <div id="hint">← → or swipe: change lane &nbsp;·&nbsp; ↑ or tap: jump &nbsp;·&nbsp; ↓: slam down</div>
 <div id="count"></div>
 
 <div id="menu" class="overlay hidden">
   <div class="card">
+    <span class="edition">NEW 3D EDITION</span>
     <h1>ANGUS TAYLAH<small>FIGHTING TAXES</small></h1>
     <div class="vs" aria-hidden="true">
       <img class="hero" src="angustaylor/faces/angus.webp" alt="" />
@@ -225,6 +241,7 @@
         <li>&uarr; / W / Space, or tap: jump over red tape and bosses</li>
         <li>&darr; / S, or swipe down: slam back to the ground</li>
         <li>Red orbs wrap you in tape and throw you. A red strip on the road shows where one is coming</li>
+        <li>Golden SURPLUS = 10 tax cuts. Scissors cut through hazards for a few seconds; a consultant takes the blame for one hit</li>
         <li>Chain tax cuts for a score multiplier. P / Esc: pause. M: mute</li>
       </ul>
     </details>
@@ -250,6 +267,8 @@
       <label class="opt">Sound effects <input type="checkbox" id="optSfx" /></label>
       <label class="opt">Music <input type="checkbox" id="optMusic" /></label>
       <label class="opt">Screen shake, flashes &amp; vibration <input type="checkbox" id="optShake" /></label>
+      <label class="opt">Rain on the window <input type="checkbox" id="optGlass" /></label>
+      <label class="opt">Rain in the world <input type="checkbox" id="optRain" /></label>
     </div>
     <div class="btns"><button id="settingsClose" class="ghost">Back</button></div>
   </div>
@@ -281,9 +300,9 @@
   </div>
 </div>
 
-<div id="loader"><h1>ANGUS TAYLAH<small>FIGHTING TAXES</small></h1><div class="bar"><div id="loadBar"></div></div><div>Loading…</div></div>
+<div id="loader"><h1>ANGUS TAYLAH<small>FIGHTING TAXES</small></h1><div style="color:#ffd34d;font-weight:900;letter-spacing:.22em;font-size:13px">NEW 3D EDITION</div><div class="bar"><div id="loadBar"></div></div><div>Loading…</div></div>
 <div id="fatal" class="hidden" role="alert"><h1>Oops</h1><p id="fatalMsg"></p><button onclick="location.reload()">Reload</button></div>
-<noscript><div id="fatal" style="position:fixed;inset:0;z-index:30;background:#1a0610;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">This game needs JavaScript.</div></noscript>
+<noscript><div id="fatal" style="position:fixed;inset:0;z-index:30;background:#040c1e;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">This game needs JavaScript.</div></noscript>
 
 <script nomodule>
   document.getElementById('loader').style.display = 'none';

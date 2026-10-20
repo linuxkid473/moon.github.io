@@ -1,7 +1,7 @@
 // A single pooled particle system (one draw call) for pickups, landings and hits.
 import { THREE, rand, canvasTex } from './gfx.js';
 
-const MAX = 360;
+const MAX = 900;
 
 export function createFx(scene) {
   const pos = new Float32Array(MAX * 3), col = new Float32Array(MAX * 3);
@@ -16,7 +16,7 @@ export function createFx(scene) {
     g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
   });
   const points = new THREE.Points(geo, new THREE.PointsMaterial({
-    size: 0.34, map: dot, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    size: 0.26, map: dot, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   }));
   points.frustumCulled = false;
   points.renderOrder = 8;

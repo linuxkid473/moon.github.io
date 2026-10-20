@@ -1,4 +1,4 @@
-# Angus Taylah: Fighting Taxes
+# Angus Taylah: Fighting Taxes (New 3D Edition)
 
 A low-poly 3D lane runner (three.js r160, no build step). Dodge tax stacks, red tape and the bosses,
 grab the TAX CUT signs, buy cosmetics in the shop.
@@ -17,11 +17,30 @@ because the game is loaded as ES modules.
 | `cosmetics.js` | Shop items and the cloth-simulated cape |
 | `world.js` | Road, arches, scenery templates, menu stage |
 | `fx.js` | Pooled particle system (pickups, landings, hits) |
+| `explosion.js` | The tax bomb: flash, shockwave, fireball, smoke column, embers, debris, scorch (pooled sprites, no lights added) |
+| `crack.js` | What the blame shield does to obstacles: a crack runs down them, then they split open and tumble apart |
 | `audio.js` | Web Audio synthesised effects and music (no audio files) |
 | `ticker.js` | Satirical news ticker and its headlines |
+| `glass.js` | The final pass: optional rain on the window, a light sharpen and a vignette |
+| `rain.js` | Rain streaks and road splashes in the world |
 | `gfx.js` | Small three.js helpers |
 | `faces/` | The three baked face textures |
 | `vendor/` | three.js, self-hosted so the game has no CDN dependency |
+
+## What's new in v3 (merged with the rally-stage build)
+
+* **Graphics:** the scene is drawn to a texture and seen through rain-spattered glass (the world is a Liberal blue; red is kept for hazards: tape, tax stacks, orbs), plus a vignette. Nothing is blurred: no bloom, canvas textures are painted at 2x, the game renders at the screen's native resolution, and a light sharpen runs in the final pass. Alley walls with lit windows, a huge LED wall and crowd at the horizon, scrolling edge lights, richer tax stacks, red-tape barriers and spinning coins, and more detailed people (creases, soles, pocket squares, watches). Static meshes are baked together to keep draw calls low.
+* **Gameplay:** golden SURPLUS cuts (worth 10), ribbon-cutting scissors (cut through hazards for 6 s), a consultant (takes the blame for one hit), streak call-outs, ranks and game-over titles, a camera that leans into lane changes.
+* **Settings:** "Rain on the window" and "Rain in the world" can each be switched off. Add `?noadapt` to the URL to stop the game lowering quality automatically while you test.
+* **Dynamic resolution:** every ~0.75 s the average frame time is checked. Slower than 60 fps: the render scale drops a step (down to 0.6x, and the window drops go off at the low end). Comfortably fast for a few seconds: it probes a step back up. It starts at the screen's native resolution (up to 2x).
+* The menu stage no longer adds or removes lights or fog when switching to the road, which used to recompile every shader and cause a hitch.
+
+## Latest changes
+
+* **Dark Liberal blue:** the light blues (road lines, windows, LED strips, lights, UI accents, Angus's shirt) are now the deep Liberal blue family (`#0b2f86` / `#1f4fb8`).
+* **Blame shield:** now lasts `POWER.shieldSecs` (10 s). While it's up, every tax stack, red-tape barrier and thrown tape orb he touches cracks open (`crack.js`) for `POWER.crackBonus` points. A boss's touch still pops it. The bubble is a dark-blue hex-grid sphere that flares on impact and flickers when it is about to run out.
+* **Bodies:** rounded chest, waist, shoulder caps, bicep/forearm/thigh/calf masses, a seat, ankles and shoes. The upper body hangs from a `spine` pivot (`SPINE_Y`), so the chest twists against the hips and leans into the run. Poses are now 17 numbers (`POSE_N`): the extra five are chest twist/lean/sway and the two ankles. New run cycle (harder knee drive, heel-to-toe feet, bent-elbow arm pump), push-off stretch, tucked jump apex, chest-fold landing, a head that counter-rotates to keep looking down the road, and a wound-up boss throw.
+* **Tax bomb:** a tax stack that hits him now detonates (`explosion.js`): flash, shockwave rings, billowing fireball, smoke column, embers and debris, with a camera shake, light flare, blast overlay (`#blast`) and a synthesised boom (`audio.sfx.explosion`). The blast throws him into the air.
 
 ## Physics and feel
 

@@ -25,8 +25,10 @@ export const saveWallet = () => store.set(KEYS.wallet, JSON.stringify(W));
 
 /** Player settings. reduceMotion defaults to the OS preference. */
 const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-export const settings = readJson(KEYS.settings, { sfx: true, music: true, shake: !prefersReduced });
+export const settings = readJson(KEYS.settings, { sfx: true, music: true, shake: !prefersReduced, glass: true, rain: true });   // glass: drops on the window. rain: rain in the world
 export const saveSettings = () => store.set(KEYS.settings, JSON.stringify(settings));
+// One-time migration: rain on the window is back on by default (the old build had switched it off for everyone).
+if (store.get('angusRainOnV2', '') !== '1') { settings.glass = true; settings.rain = true; store.set('angusRainOnV2', '1'); saveSettings(); }
 
 export const helpSeen = () => store.get(KEYS.seen, '') === '1';
 export const markHelpSeen = () => store.set(KEYS.seen, '1');
@@ -40,7 +42,7 @@ export const S = {
   invuln: 0, shake: 0, hitStop: 0, runT: 0, slow: 1, recovery: 0,
   rowTimer: 0, sceneryTimer: 0, nextBossDist: 180, bossCount: 0,
   thrown: 0, tapeLeft: 0, throwDir: 1, throwAir: 0, noSpin: false,
-  budgetT: 0, glance: 0, wasAir: false, settle: 0, recover: 0,
+  budgetT: 0, cutT: 0, shield: 0, shieldT: 0, glance: 0, wasAir: false, settle: 0, recover: 0,
   jumpBufferT: 0, laneBuffer: 0, laneBufferDir: 0,
   hitBy: '', best: loadBest(), overAt: 0, newBest: false,
 };

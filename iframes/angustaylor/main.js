@@ -1,16 +1,20 @@
 // Angus Taylah: Fighting Taxes. Game loop, physics, spawning, UI.
-import { THREE, rand, pick, clamp, damp, loadImage, mesh } from './gfx.js';
-import { LANES, SPAWN_Z, DESPAWN_Z, PHYS, JUMP_V, RUN, BUDGET_AT, BUDGET_SECS, CHARACTERS, BOSS_ORDER, ITEMS } from './config.js';
+import { THREE, rand, pick, clamp, damp, loadImage, mesh, blobShadow } from './gfx.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, PHYS, JUMP_V, RUN, BUDGET_AT, BUDGET_SECS, CHARACTERS, BOSS_ORDER, ITEMS, POWER, STREAK_CALLS, PICKUP_POPS, RANKS, OVER_TITLES } from './config.js';
 import { S, W, saveWallet, saveBest, settings, saveSettings, helpSeen, markHelpSeen } from './state.js';
 import * as audio from './audio.js';
-import { buildPerson, applyPose, cyclePose, tossPose, AIR_POSE, FALL_POSE, MENU_POSE } from './person.js';
+import { buildPerson, applyPose, cyclePose, tossPose, AIR_POSE, FALL_POSE, MENU_POSE, LAUNCH_POSE, TUCK_POSE, POSE_N } from './person.js';
 import { createCosmetics } from './cosmetics.js';
 import { createWorld, STAGE } from './world.js';
 import { createFx } from './fx.js';
+import { createExplosion } from './explosion.js';
+import { createCrack } from './crack.js';
+import { createRain } from './rain.js';
+import { createGlass } from './glass.js';
 import { createTicker } from './ticker.js';
 
 const $ = (id) => document.getElementById(id);
-const sky = 0x2a0814;   // dark red haze: the whole run is a rally stage
+const sky = 0x06142e;   // deep blue haze: the whole run is a rally stage
 
 /* Hazard footprints for hit testing: half width (x), height (y), half depth (z). */
 const HAZ = { tax: { halfW: 0.75, h: 2.0, halfD: 0.45 }, tape: { halfW: 1.1, h: 0.8, halfD: 0.2 } };
@@ -25,29 +29,25 @@ async function boot() {
   /* ---------- renderer, scene, camera, lights ---------- */
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });
+    renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });   // (used when the scene is drawn straight to the screen; the normal path anti-aliases its own target in glass.js)
   } catch {
     fatal('Your browser could not start 3D graphics (WebGL). Try updating it, or turn on hardware acceleration.');
     return;
   }
-  let pixelRatioCap = Math.min(window.devicePixelRatio || 1, 1.5);
-  renderer.setPixelRatio(pixelRatioCap);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
+  const MAX_SCALE = Math.min(window.devicePixelRatio || 1, 2);   // native resolution on a 2x screen, so nothing is upscaled and softened
+  let renderScale = MAX_SCALE;   // pixels drawn per CSS pixel; the quality controller below moves this to hold 60 fps
+  renderer.setPixelRatio(renderScale);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(sky);
-  scene.fog = new THREE.Fog(sky, 30, 120);
+  scene.fog = new THREE.Fog(sky, 75, 135);   // a light haze only: the far end of the road stays crisp
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 300);
 
-  scene.add(new THREE.HemisphereLight(0xffa0aa, 0x4a1620, 1.6));
-  const sun = new THREE.DirectionalLight(0xffc4c8, 2.6);
+  const hemi = new THREE.HemisphereLight(0x3a5fb5, 0x2a1a3a, 1.25);   // its intensity flares for a moment when a tax bomb goes off
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff0f2, 2.4);
   sun.position.set(-6, 14, 8);
   sun.target.position.set(0, 0, -6);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 60 });
-  sun.shadow.camera.updateProjectionMatrix();
   scene.add(sun, sun.target);
 
   /* ---------- portraits ---------- */
@@ -63,7 +63,7 @@ async function boot() {
   /* ---------- world, people, costumes ---------- */
   const worldFx = createWorld({ scene, camera });
   const { T } = worldFx;
-  for (const id of BOSS_ORDER) T[id] = buildPerson({ ...CHARACTERS[id], faceImage: faceImg[id] });
+  for (const id of BOSS_ORDER) { T[id] = buildPerson({ ...CHARACTERS[id], faceImage: faceImg[id] }); T[id].add(blobShadow(0.7, 0.55, 0.4)); }
   const bossHeight = Math.max(...BOSS_ORDER.map((id) => T[id].userData.headTop)) - 0.05;   // top of the head, for hit testing
 
   const player = buildPerson({ ...CHARACTERS.ANGUS, label: null, faceImage: faceImg.ANGUS });
@@ -72,12 +72,22 @@ async function boot() {
   const playerHead = player.getObjectByName('head');
   const cos = createCosmetics({ scene, player, camera });
   const fx = createFx(scene);
+  const boom = createExplosion(scene, fx);
+  const crack = createCrack(scene, fx);
+  let boomGlow = 0;
+  const rain = createRain(scene, worldFx.dotTex);
+  const glass = createGlass({ renderer, scene, camera, rain });
   cos.apply();
+  const TAPE_AXIS = new THREE.Vector3(0.5, 0.5, 0.7).normalize();   // the thrown tape corkscrews about a diagonal axis
+
+  const blob = new THREE.Mesh(new THREE.CircleGeometry(0.6, 16).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false }));   // a cheap soft shadow under him
+  blob.position.y = 0.035;
+  scene.add(blob);
 
   const warnMat = new THREE.MeshBasicMaterial({ color: 0xff2a3a, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
   const warnGeo = new THREE.PlaneGeometry(1.5, 1).rotateX(-Math.PI / 2);
 
-  const world = { hazards: [], taxCuts: [], bosses: [], shots: [], scenery: [] };
+  const world = { hazards: [], taxCuts: [], bosses: [], shots: [], scenery: [], powerups: [] };
   const reduceMotion = () => !settings.shake;
   const news = createTicker($('tkView'), matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -125,6 +135,9 @@ async function boot() {
     const b = S.budgetT > 0 ? Math.ceil(S.budgetT) : 0;
     setText('budget', b ? `LIBERAL BUDGET ${b}s` : '');
     $('budget').style.display = b ? 'block' : 'none';
+    const pw = [S.cutT > 0 ? `✂ RIBBON-CUTTING ${Math.ceil(S.cutT)}s` : '', S.shield > 0 ? `💼 BLAME SHIELD ${Math.ceil(S.shieldT)}s` : ''].filter(Boolean).join('  ·  ');
+    setText('powers', pw);
+    $('powers').style.display = pw ? 'block' : 'none';
   }
 
   let popCount = 0;
@@ -157,7 +170,7 @@ async function boot() {
     void f.offsetWidth;
     f.classList.add('on');
   }
-  const vibrate = (ms) => { if (settings.shake && navigator.vibrate) navigator.vibrate(ms); };
+  const vibrate = (ms) => { if (settings.shake && navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(ms); };   // browsers block it (and log an error) until the player has tapped or pressed a key
 
   /* ---------- spawning ---------- */
   const laneX = (lane) => LANES[lane];
@@ -168,10 +181,15 @@ async function boot() {
   /** A tidy line of tax cuts: always five, evenly spaced, down the middle of one lane. */
   const CUTS_PER_LINE = 5, CUT_SPACING = 2.4;
   function spawnTaxCuts(lane) {
+    const golden = Math.random() < POWER.goldChance;   // now and then the first one is a golden SURPLUS, worth ten
     for (let i = 0; i < CUTS_PER_LINE; i++) {
-      const z = SPAWN_Z - i * CUT_SPACING;
-      world.taxCuts.push({ lane, cy: 1.0, mesh: acquire(T.taxCut, laneX(lane), 1.0, z), pz: z, bob: i * 0.7 });
+      const z = SPAWN_Z - i * CUT_SPACING, gold = golden && i === 0;
+      world.taxCuts.push({ lane, cy: 1.0, gold, mesh: acquire(gold ? T.goldCut : T.taxCut, laneX(lane), 1.0, z), pz: z, bob: i * 0.7 });
     }
+  }
+  function spawnPowerup(kind, lane) {
+    const m = acquire(kind === 'scissors' ? T.scissorsPickup : T.consultant, laneX(lane), 1.1, SPAWN_Z);
+    world.powerups.push({ kind, lane, mesh: m, pz: SPAWN_Z });
   }
   function spawnBoss() {
     const kind = BOSS_ORDER[S.bossCount++ % BOSS_ORDER.length];
@@ -218,6 +236,7 @@ async function boot() {
     { w: () => 1.3, run: (a, b) => { spawnHazard('tape', a); spawnTaxCuts(b); } },
     { w: (d) => d * 1.3, run: (a, b, c) => { spawnHazard('tape', a); spawnHazard('tape', b); spawnTaxCuts(c); } },
     { w: (d) => d * 1.1, run: (a, b, c) => { spawnHazard('tax', a); spawnHazard('tape', b); spawnTaxCuts(c); } },
+    { w: () => POWER.powerupChance * 6, safe: true, run: (a, b) => { spawnPowerup(pick(['scissors', 'consultant']), a); spawnTaxCuts(b); } },   // a power-up in one lane, tax cuts in another
   ];
   function spawnRow() {
     const d = clamp(S.time / 90, 0, 1);
@@ -247,10 +266,10 @@ async function boot() {
   }
 
   /** A gentle toss: the tape tugs him into a neighbouring lane and lofts him in a smooth backflip. Controls lock for under half a second. */
-  function tapeThrow() {
+  function tapeThrow(withTape = true) {
     if (S.mode !== 'playing' && S.mode !== 'dying') return;
     S.thrown = 0.45;
-    S.tapeLeft = 1.1;
+    S.tapeLeft = withTape ? 1.1 : 0;
     const dir = S.lane === 0 ? 1 : S.lane === 2 ? -1 : Math.random() < 0.5 ? -1 : 1;
     S.lane = clamp(S.lane + dir, 0, 2);
     S.throwDir = dir;
@@ -260,10 +279,12 @@ async function boot() {
     S.onGround = false;
     S.fastFalling = false;
     S.noSpin = true;   // no turn-to-camera spin during a toss
+    if (withTape) audio.sfx.tape();
   }
 
+  const AIR_MIX = new Array(POSE_N).fill(0);   // scratch pose for blending the jump poses
   const CAUSES = {
-    tax: 'Crushed by a tax stack',
+    tax: 'Blown up by a tax bomb',
     tape: 'Tangled in red tape',
     boss: (by) => `Ran into ${CHARACTERS[by]?.name ?? 'the Government'}`,
     shot: (by) => `Wrapped in ${CHARACTERS[by]?.name ?? 'the Government'}'s red tape`,
@@ -271,6 +292,14 @@ async function boot() {
 
   function hurt(cause = 'tape', by = '') {
     if (S.invuln > 0 || S.mode !== 'playing') return false;
+    if (S.shield > 0) {   // a boss can't be cracked open: his touch pops the shield instead (everything else the shield just breaks)
+      S.shield = 0; S.shieldT = 0; S.invuln = 1.0; S.shake = Math.max(S.shake, 0.4);
+      fx.burst(player.position.x, S.y + 1.5, 0, 0x1f4fb8, 22, { speed: 5, up: 3, life: 0.6 });
+      popup('CONSULTANT TAKES THE BLAME!', '#3a6fe0');
+      news('blame', true);
+      audio.sfx.blame();
+      return false;
+    }
     S.lives--;
     S.invuln = PHYS.hitInvuln;
     S.shake = 0.9;
@@ -290,6 +319,29 @@ async function boot() {
     return true;
   }
 
+  /** The tax bomb: a stack of tax papers goes off under him. */
+  function detonate(m) {
+    boom.explode(m.position.x, 1.2, m.position.z - 2.4, 1);   // a little ahead of him, so the whole blast is on screen as he runs into it
+    boomGlow = 1;
+    if (!reduceMotion()) { const b = $('blast'); b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
+    S.shake = Math.max(S.shake, 1.7);
+    S.hitStop = 0.1;
+    S.slow = 0.5;   // the blast knocks the wind out of the run
+    vibrate(220);
+    audio.sfx.explosion();
+    popup('TAX BOMB!', '#ffb347');
+  }
+  /** With the blame shield up, whatever he runs into cracks open (crack.js takes over `m` and releases it when it breaks). */
+  function crackOpen(kind, m) {
+    crack.open(kind, m, release);
+    cos.shieldPulse();
+    fx.burst(m.position.x, m.position.y + 1.0, m.position.z, 0x2a5cc8, 20, { speed: 6, up: 4, life: 0.6 });
+    S.cutScore += POWER.crackBonus;
+    S.shake = Math.max(S.shake, 0.45);
+    popup(pick(['CRACKED OPEN!', 'SHATTERED!', 'SMASHED!']), '#3a6fe0');
+    audio.sfx.crack();
+  }
+
   /* Hit testing uses real boxes. z is swept from where the object was last step to where it is now, so nothing tunnels at speed. */
   function collide() {
     const px = player.position.x, hw = PHYS.playerHalfW, hd = PHYS.playerHalfD;
@@ -298,9 +350,22 @@ async function boot() {
       Math.abs(px - x) < halfW + hw && y0 < yb && y1 > ya &&
       Math.max(z, pz) + halfD > -hd && Math.min(z, pz) - halfD < hd;
 
-    for (const h of world.hazards) {
-      const f = HAZ[h.kind], m = h.mesh;
-      if (hits(m.position.x, 0, f.h, m.position.z, h.pz, f.halfW, f.halfD)) hurt(h.kind);
+    for (let i = world.hazards.length - 1; i >= 0; i--) {
+      const h = world.hazards[i], f = HAZ[h.kind], m = h.mesh;
+      if (!hits(m.position.x, 0, f.h, m.position.z, h.pz, f.halfW, f.halfD)) continue;
+      if (S.shieldT > 0) {   // the blame shield cracks it open
+        world.hazards.splice(i, 1);
+        crackOpen(h.kind, m);
+      } else if (S.cutT > 0) {   // the ceremonial scissors cut straight through it
+        fx.burst(m.position.x, 1.0, m.position.z, 0xff6a73, 16, { speed: 5, up: 3, life: 0.6 });
+        release(m);
+        world.hazards.splice(i, 1);
+        S.cutScore += POWER.scissorsBonus;
+        popup(pick(['SNIP!', 'RIBBON CUT!', 'CUT THROUGH!']), '#ff6a73');
+        audio.sfx.snip();
+      } else if (h.kind === 'tax') {   // a tax stack goes off in his face
+        if (hurt('tax')) { world.hazards.splice(i, 1); detonate(m); release(m); tapeThrow(false); }
+      } else hurt(h.kind);
     }
     for (const b of world.bosses) {
       const m = b.mesh;
@@ -313,36 +378,55 @@ async function boot() {
     for (let i = world.shots.length - 1; i >= 0; i--) {
       const sh = world.shots[i], m = sh.mesh;
       if (hits(m.position.x, 0.75, 1.55, m.position.z, sh.pz, 0.25, 0.4)) {
-        release(m);
         world.shots.splice(i, 1);
-        if (hurt('shot', sh.from)) tapeThrow();
+        if (S.shieldT > 0) crackOpen('shot', m);
+        else { release(m); if (hurt('shot', sh.from)) tapeThrow(); }
       }
     }
     for (let i = world.taxCuts.length - 1; i >= 0; i--) {
       const c = world.taxCuts[i], m = c.mesh;
       if (hits(m.position.x, c.cy - 0.5, c.cy + 0.4, m.position.z, c.pz, 0.36, 0.12)) {
-        collectTaxCut(m);
+        collectTaxCut(m, c.gold);
         release(m);
         world.taxCuts.splice(i, 1);
       }
     }
+    for (let i = world.powerups.length - 1; i >= 0; i--) {
+      const pu = world.powerups[i], m = pu.mesh;
+      if (hits(m.position.x, 0.4, 1.9, m.position.z, pu.pz, 0.5, 0.3)) {
+        collectPowerup(pu.kind);
+        release(m);
+        world.powerups.splice(i, 1);
+      }
+    }
   }
 
-  function collectTaxCut(m) {
-    S.taxCuts++;
+  function collectPowerup(kind) {
+    S.glance = 0.7;
+    fx.burst(player.position.x, S.y + 1.5, 0, kind === 'scissors' ? 0xff6a73 : 0x1f4fb8, 22, { speed: 5, up: 3, life: 0.7 });
+    audio.sfx.power();
+    if (kind === 'scissors') { S.cutT = POWER.scissorsSecs; popup('RIBBON-CUTTING CEREMONY!', '#ff6a73'); news('scissors', true); }
+    else { S.shieldT = POWER.shieldSecs; S.shield = 1; popup('BLAME SHIELD UP!', '#3a6fe0'); news('consultant', true); }
+  }
+
+  function collectTaxCut(m, gold = false) {
+    const val = gold ? POWER.goldValue : 1, before = S.taxCuts;
+    S.taxCuts += val;
     S.streak++;
     S.bestStreak = Math.max(S.bestStreak, S.streak);
     const mult = Math.min(5, 1 + Math.floor(S.streak / 10));
     if (mult > S.mult) popup(`x${mult} STREAK!`, '#ffd34d');
     S.mult = mult;
-    S.cutScore += 10 * mult;
+    S.cutScore += 10 * mult * val;
     S.glance = 0.7;
-    W.coins++;
-    if (S.taxCuts % 5 === 0) saveWallet();
-    audio.sfx.coin(S.streak);
-    if ([1, 10, 25, 50, 100, 150].includes(S.taxCuts)) news('tc' + S.taxCuts, true); else if (Math.random() < 0.2) news('taxcut');
-    if (S.taxCuts === BUDGET_AT) { S.budgetT = BUDGET_SECS; popup('LIBERAL BUDGET!', '#7fb2ff'); audio.sfx.budget(); news('budget', true); }
-    popup('TAX CUT!', '#7CFC9A');
+    W.coins += val;
+    if (Math.floor(before / 5) !== Math.floor(S.taxCuts / 5)) saveWallet();
+    for (const ms of [1, 10, 25, 50, 100, 150]) if (before < ms && S.taxCuts >= ms) news('tc' + ms, true);
+    if (before < BUDGET_AT && S.taxCuts >= BUDGET_AT) { S.budgetT = BUDGET_SECS; popup('LIBERAL BUDGET!', '#3a6fe0'); audio.sfx.budget(); news('budget', true); }
+    const call = STREAK_CALLS[S.streak];
+    if (call) { popup(call, '#ffd34d'); news('streak', true); audio.sfx.fanfare(); }
+    else if (gold) { popup('SURPLUS FOUND! +10', '#ffd34d'); news('gold', true); audio.sfx.gold(); }
+    else { popup(pick(PICKUP_POPS), '#7CFC9A'); audio.sfx.coin(S.streak); if (Math.random() < 0.2) news('taxcut'); }
   }
 
   function prune() {
@@ -364,6 +448,9 @@ async function boot() {
       world[k].length = 0;
     }
     fx.clear();
+    crack.clear();
+    boom.clear();
+    boomGlow = 0;
     $('fx').replaceChildren();
     popCount = 0;
   }
@@ -388,7 +475,7 @@ async function boot() {
     Object.assign(S, {
       time: 0, speed: RUN.startSpeed, dist: 0, taxCuts: 0, cutScore: 0, streak: 0, bestStreak: 0, mult: 1, lives: 3,
       lane: 1, vx: 0, y: 0, vy: 0, onGround: true, airT: 0, fastFalling: false, invuln: 1.0, shake: 0, hitStop: 0, slow: 1,
-      rowDist: 22, sceneryDist: 0, nextBossDist: 180, bossCount: 0, thrown: 0, tapeLeft: 0, noSpin: false, budgetT: 0,
+      rowDist: 22, sceneryDist: 0, nextBossDist: 180, bossCount: 0, thrown: 0, tapeLeft: 0, noSpin: false, budgetT: 0, cutT: 0, shield: 0, shieldT: 0,
       jumpBufferT: 0, laneBuffer: 0, laneBufferDir: 0, hitBy: '', hitById: '', newBest: false, dyingT: 0, apex: 0,
     });
     player.position.set(0, 0, 0);
@@ -399,6 +486,7 @@ async function boot() {
     audio.music.start();
     audio.music.setIntensity(1);
     news('start', true);
+    glass.storm();   // the rain comes down hard for the first few seconds
     if (!helpSeen()) { $('hint').classList.add('show'); setTimeout(() => $('hint').classList.remove('show'), 6500); }
   }
 
@@ -420,7 +508,9 @@ async function boot() {
     $('hint').classList.remove('show');
     $('finalScore').textContent = String(score);
     $('overStats').textContent = `${Math.floor(S.dist)} m  ·  ${S.taxCuts} tax cuts  ·  best streak ${S.bestStreak}`;
-    $('overMsg').textContent = S.newBest ? 'New best! Angus is not paying this.' : `Best ${S.best}`;
+    const rank = RANKS.filter(([min]) => score >= min).pop()[1];
+    $('overTitle').textContent = pick(OVER_TITLES);
+    $('overMsg').textContent = `${S.newBest ? 'New best! Angus is not paying this.' : `Best ${S.best}`}  ·  Rank: ${rank}`;
     $('overMsg').classList.toggle('best', S.newBest);
     const by = $('overBy');
     by.textContent = S.hitBy || 'Audited!';
@@ -614,12 +704,14 @@ async function boot() {
     $('optSfx').checked = settings.sfx;
     $('optMusic').checked = settings.music;
     $('optShake').checked = settings.shake;
+    $('optGlass').checked = settings.glass;
+    $('optRain').checked = settings.rain;
     $('muteBtn').textContent = settings.sfx || settings.music ? '🔊' : '🔇';
     $('muteBtn').setAttribute('aria-label', settings.sfx || settings.music ? 'Mute' : 'Unmute');
     document.body.classList.toggle('calm', !settings.shake);
     saveSettings();
   }
-  for (const [id, key] of [['optSfx', 'sfx'], ['optMusic', 'music'], ['optShake', 'shake']]) $(id).addEventListener('change', (e) => { settings[key] = e.target.checked; applySettings(); });
+  for (const [id, key] of [['optSfx', 'sfx'], ['optMusic', 'music'], ['optShake', 'shake'], ['optGlass', 'glass'], ['optRain', 'rain']]) $(id).addEventListener('change', (e) => { settings[key] = e.target.checked; applySettings(); });
   const openSettings = (from) => () => { settingsFrom = from; show(from, false); show('settings', true); $('settingsClose').focus({ preventScroll: true }); };
   press('settingsBtn', openSettings('menu'));
   press('settingsBtn2', openSettings('pause'));
@@ -632,7 +724,8 @@ async function boot() {
     // The body runs away from the camera; the head turns back over the shoulder on pickups and hits,
     // and faces the camera on the pause and game-over screens.
     const glancing = (S.mode === 'paused' || S.mode === 'over' || S.glance > 0) && S.onGround;
-    playerHead.rotation.y = damp(playerHead.rotation.y, glancing ? Math.PI * 0.92 : 0, 12, dt);
+    const sp = S.pose;   // last frame's pose: the head counter-rotates against the chest so he keeps looking down the road
+    playerHead.rotation.y = damp(playerHead.rotation.y, glancing ? Math.PI * 0.92 : sp ? -sp[12] * 0.8 : 0, 12, dt);
     S.glance = Math.max(0, S.glance - dt);
 
     // Mid-jump he turns round to face the camera and back again. Progress follows his height (up, then down),
@@ -649,7 +742,8 @@ async function boot() {
     S.settle = Math.max(0, S.settle - dt);
     player.rotation.x = 0;
     player.rotation.z = 0;
-    playerHead.rotation.x = Math.sin(S.runT * 2) * (playing && S.onGround ? 0.04 : 0);
+    playerHead.rotation.x = (sp ? -sp[13] * 0.75 : 0) + Math.sin(S.runT * 2) * (playing && S.onGround ? 0.03 : 0);
+    playerHead.rotation.z = sp ? -sp[14] * 0.8 : 0;
     if (S.mode !== 'playing' && S.mode !== 'dying') { S.thrown = 0; S.tapeLeft = 0; }
     S.thrown = Math.max(0, S.thrown - dt);
     S.tapeLeft = Math.max(0, S.tapeLeft - dt);
@@ -662,7 +756,7 @@ async function boot() {
     if (tossing) {   // the toss: yank, tuck, flip, open out
       const k = Math.min(1, S.airT / (S.throwAir || 1));
       const p = tossPose(k);
-      tgt = p.slice(1, 13); rate = 12;
+      tgt = p.slice(1, 13).concat([0, 0.2, 0, 0.3, 0.3]); rate = 12;
       playerHead.rotation.x = p[13];
       player.rotation.z = S.throwDir * p[14];
       const f = clamp((k - 0.12) / 0.73, 0, 1);   // the flip starts after the yank and finishes before landing
@@ -673,14 +767,23 @@ async function boot() {
       player.position.y += Math.abs(s) * 0.4;
       player.rotation.z = s * 0.12 + lean;
       player.rotation.x = playing ? -0.1 : 0;
-      tgt = new Array(12).fill(0);
+      tgt = new Array(POSE_N).fill(0);
     } else if (S.onGround) {
       if (playing) S.runT += dt * S.speed * 0.6;
-      tgt = cyclePose(S.runT, playing ? 1 : 0);
+      const gait = 0.92 + 0.2 * clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1);   // longer strides and harder arm drive as he speeds up
+      tgt = cyclePose(S.runT, playing ? gait : 0);
       rate = playing ? (S.settle > 0 ? 12 : 40) : 10;
-      if (playing) { player.position.y += Math.abs(Math.sin(S.runT)) * 0.06; player.rotation.x = -0.08; player.rotation.z = lean; }   // a little bounce and a forward lean
+      if (playing) { player.position.y += Math.abs(Math.sin(S.runT)) * 0.085; player.rotation.x = -0.05; player.rotation.z = lean + Math.sin(S.runT) * 0.025; }   // a bounce on every stride, a little forward lean and hip sway
     } else {
-      tgt = S.fastFalling ? FALL_POSE : AIR_POSE; rate = 12;
+      const launching = S.airT < 0.14 && S.vy > 0;   // the push-off: pushed up tall, toes pointed
+      if (S.fastFalling) tgt = FALL_POSE;
+      else if (launching) tgt = LAUNCH_POSE;
+      else {   // he pulls his knees up as he tops out, and reaches out for the landing as he falls
+        const w = clamp(1 - Math.abs(S.vy) / 9, 0, 1);
+        for (let i = 0; i < POSE_N; i++) AIR_MIX[i] = AIR_POSE[i] + (TUCK_POSE[i] - AIR_POSE[i]) * w;
+        tgt = AIR_MIX;
+      }
+      rate = launching ? 26 : 12;
       player.rotation.z = lean;
     }
     if (S.mode === 'menu') {   // standing proudly on the stage: chest out, one hand on his hip, the other presenting the sign
@@ -688,7 +791,7 @@ async function boot() {
       player.position.set(STAGE.x - 1.5, STAGE.y + Math.sin(tm * 1.6) * 0.02, STAGE.z + 0.9);
       player.rotation.set(-0.06, -0.28, 0);
       playerHead.rotation.y = damp(playerHead.rotation.y, 0.1 + Math.sin(tm * 0.7) * 0.12, 6, dt);
-      if (!taped) { tgt = MENU_POSE.slice(); tgt[9] += Math.sin(tm * 2) * 0.05; tgt[5] = Math.sin(tm * 1.3) * 0.04; rate = 8; } else tgt = new Array(12).fill(0);
+      if (!taped) { tgt = MENU_POSE.slice(); tgt[9] += Math.sin(tm * 2) * 0.05; tgt[5] = Math.sin(tm * 1.3) * 0.04; tgt[13] += Math.sin(tm * 1.8) * 0.015; tgt[12] += Math.sin(tm * 0.7) * 0.05; rate = 8; } else tgt = new Array(POSE_N).fill(0);
     } else {
       player.position.z = 0;
     }
@@ -702,34 +805,44 @@ async function boot() {
       tgt[0] -= 0.4 * crouch; tgt[1] -= 0.4 * crouch;   // hips fold forward
       tgt[2] += 0.8 * crouch; tgt[3] += 0.8 * crouch;   // knees bend to take the landing
       tgt[6] -= 0.3 * crouch; tgt[7] -= 0.3 * crouch;
+      tgt[13] += 0.3 * crouch; tgt[15] += 0.2 * crouch; tgt[16] += 0.2 * crouch;   // chest folds over his knees
       player.scale.set(1 + 0.05 * crouch, 1 - 0.12 * crouch, 1 + 0.05 * crouch);
       player.rotation.z += S.throwDir * 0.18 * r * Math.sin((1 - r) * 14);
+    } else if (!tossing && !S.onGround && S.airT < 0.14 && S.vy > 0) {   // stretch up through the push-off
+      const st = 1 - S.airT / 0.14;
+      player.scale.set(1 - 0.05 * st, 1 + 0.08 * st, 1 - 0.05 * st);
     } else {
       player.scale.set(1, 1, 1);
     }
 
     // every joint chases its target smoothly, so changing between poses never pops
-    S.pose = S.pose || new Array(12).fill(0);
+    S.pose = S.pose || new Array(POSE_N).fill(0);
     const a = 1 - Math.exp(-rate * dt);
-    for (let i = 0; i < 12; i++) S.pose[i] += (tgt[i] - S.pose[i]) * a;
+    for (let i = 0; i < POSE_N; i++) S.pose[i] += ((tgt[i] || 0) - S.pose[i]) * a;
     applyPose(player, S.pose);
+    blob.position.x = player.position.x;
+    blob.position.z = player.position.z;
+    blob.visible = S.mode !== 'menu';
+    blob.material.opacity = 0.4 / (1 + 0.8 * S.y);   // fades as he jumps
   }
 
   function animateBoss(b, dt) {
     const tgt = cyclePose(b.anim * 7, 0.6);   // a jog: hips, knees, arms and elbows
-    if (b.warnT > 0) { tgt[5] = 1.1; tgt[7] = -0.5; tgt[9] = 0.25; }   // arm drawn back behind the head: the tell
-    else if (b.throwing > 0) {   // whip the arm forward
+    if (b.warnT > 0) { tgt[5] = 1.1; tgt[7] = -0.5; tgt[9] = 0.25; tgt[12] = 0.45; tgt[13] -= 0.1; }   // arm drawn back behind the head, chest wound up: the tell
+    else if (b.throwing > 0) {   // whip the arm forward, the chest following through
       const u = 1 - b.throwing / 0.35, e = u * u * (3 - 2 * u);
       tgt[5] = 1.1 - 3.5 * e;
       tgt[7] = -0.5 - 0.8 * (1 - e);
+      tgt[12] = 0.45 - 0.8 * e;
+      tgt[13] += 0.2 * e;
     }
     b.pose = b.pose || tgt.slice();
     const bk = 1 - Math.exp(-(b.throwing > 0 || b.warnT > 0 ? 24 : 12) * dt);
-    for (let i = 0; i < 12; i++) b.pose[i] += (tgt[i] - b.pose[i]) * bk;
+    for (let i = 0; i < POSE_N; i++) b.pose[i] += (tgt[i] - b.pose[i]) * bk;
     applyPose(b.mesh, b.pose);
     // a taunting head bob
-    const head = b.mesh.getObjectByName('head');
-    if (head) head.rotation.z = Math.sin(b.anim * 3.1) * 0.08;
+    b.head ??= b.mesh.getObjectByName('head');
+    if (b.head) b.head.rotation.z = Math.sin(b.anim * 3.1) * 0.08;
   }
 
   function updateBoss(b, dt, move) {
@@ -760,8 +873,8 @@ async function boot() {
     b.anim += dt;
     animateBoss(b, dt);
 
-    const label = m.getObjectByName('label');
-    if (label) label.visible = m.position.z < -3;   // the name tag is huge up close
+    b.label ??= m.getObjectByName('label');
+    if (b.label) b.label.visible = m.position.z < -3;   // the name tag is huge up close
 
     // the red strip on the road shows the lane the throw is coming down
     const wz0 = m.position.z + 1.2, wz1 = 2;
@@ -780,8 +893,9 @@ async function boot() {
     const ph = clamp(S.y * 0.3, 0, 1.5);   // the camera rises with every jump so his head never leaves the screen
     camera.position.set(camX + rand(-1, 1) * sh * 0.3, 4.4 + ph + rand(-1, 1) * sh * 0.2, 8.2);
     camera.lookAt(camX * 0.6, 1.5 + ph * 0.7, -6);
+    if (!reduceMotion() && S.mode === 'playing') camera.rotateZ(-(player.position.x - camX * 2) * 0.012);   // the camera leans into lane changes
     S.shake *= Math.exp(-8 * dt);
-    const target = reduceMotion() ? 0 : clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1) * 7;   // a wider lens as you speed up
+    const target = reduceMotion() ? 0 : clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1) * 7 + (S.budgetT > 0 ? 3 : 0) + (S.cutT > 0 ? 2 : 0);   // a wider lens as you speed up and during power-ups
     fovKick = damp(fovKick, S.mode === 'playing' ? target : 0, 2, dt);
     const base = innerWidth / innerHeight < 0.9 ? 78 : 62;
     if (Math.abs(camera.fov - (base + fovKick)) > 0.01) { camera.fov = base + fovKick; camera.updateProjectionMatrix(); }
@@ -814,7 +928,8 @@ async function boot() {
       for (const c of world.taxCuts) {
         c.pz = c.mesh.position.z;
         c.mesh.position.z += move;
-        c.mesh.position.y = c.cy + Math.sin(S.time * 3 + c.bob) * 0.07;   // a gentle bob, always facing you
+        c.mesh.position.y = c.cy + Math.sin(S.time * 3 + c.bob) * 0.07;   // a gentle bob
+        if (!c.gold) c.mesh.rotation.y += dt * 4;   // coins spin; the golden SURPLUS sign always faces you
         const pull = S.budgetT > 0 && c.mesh.position.z > -45 ? 6 : c.mesh.position.z > -7 && c.mesh.position.z < 1 ? 3 : 0;   // the budget vacuums them in; otherwise a gentle assist when close
         if (pull) {
           if (Math.abs(c.mesh.position.x - player.position.x) < (S.budgetT > 0 ? 9 : 1.3)) c.mesh.position.x = damp(c.mesh.position.x, player.position.x, pull, dt);
@@ -822,10 +937,13 @@ async function boot() {
         }
       }
       for (const s of world.scenery) s.mesh.position.z += move;
+      for (const pu of world.powerups) { pu.pz = pu.mesh.position.z; pu.mesh.position.z += move; pu.mesh.rotation.y += dt * 2.5; pu.mesh.position.y = 1.1 + Math.sin(S.time * 3.3 + pu.mesh.position.x) * 0.12; }
       for (const b of world.bosses) updateBoss(b, dt, move);
-      for (const sh of world.shots) { sh.pz = sh.mesh.position.z; sh.mesh.position.z += (S.speed + 16) * dt; sh.mesh.rotation.y += dt * 6; }
+      for (const sh of world.shots) { sh.pz = sh.mesh.position.z; sh.mesh.position.z += (S.speed + 16) * dt; sh.mesh.rotateOnAxis(TAPE_AXIS, dt * 13); }   // the thrown tape spins, diagonally
       worldFx.scroll(move, performance.now() / 1000, S.dist, dt);
       fx.update(dt, move);
+      crack.update(dt, move);
+      boom.update(dt, move, camera.position.z);
 
       // vertical motion: rise slowly, fall fast, optionally slam down
       if (!S.onGround) {
@@ -838,6 +956,9 @@ async function boot() {
       }
       S.invuln = Math.max(0, S.invuln - dt);
       S.budgetT = S.taxCuts === 0 ? 0 : Math.max(0, S.budgetT - dt);
+      S.cutT = Math.max(0, S.cutT - dt);
+      S.shieldT = Math.max(0, S.shieldT - dt);
+      S.shield = S.shieldT > 0 ? 1 : 0;
       S.jumpBufferT = Math.max(0, S.jumpBufferT - dt);
       if (S.thrown <= 0 && S.laneBuffer > 0) {   // a lane change pressed during the toss
         S.laneBuffer -= dt;
@@ -847,6 +968,10 @@ async function boot() {
       if (sim) { collide(); }
       prune();
       audio.music.setTempo(clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1));
+    } else if (S.mode === 'over') {   // the game-over screen: the last blast keeps burning behind the card
+      fx.update(dt, 0);
+      crack.update(dt, 0);
+      boom.update(dt, 0, camera.position.z);
     } else if (S.mode === 'countdown') {
       S.countdown -= dt;
       const n = Math.ceil(S.countdown / 0.5);
@@ -868,8 +993,9 @@ async function boot() {
   /* ---------- sizing, adaptive quality, main loop ---------- */
   function resize() {
     const w = innerWidth, h = innerHeight;
-    renderer.setPixelRatio(pixelRatioCap);
+    renderer.setPixelRatio(renderScale);
     renderer.setSize(w, h, false);
+    glass.resize(w, h);
     camera.aspect = w / h;
     camera.fov = w / h < 0.9 ? 78 : 62;
     camera.updateProjectionMatrix();
@@ -877,18 +1003,47 @@ async function boot() {
   addEventListener('resize', resize);
   resize();
 
-  // If the frame rate stays low, drop the resolution; if it is still low, turn the shadows off.
-  let slowT = 0, quality = 0;
+  /* Holding 60 fps without turning the picture to mush.
+     Every ~0.75 s the average frame time is checked. If it is too slow the game gives things up in this order, and the
+     picture stays sharp for as long as possible:
+       stage 0  everything on
+       stage 1-2 unused: the rain, window drops and lights always stay on
+       stage 2  no post-processing: the scene is drawn straight to the screen at full resolution
+       stage 3  only now does the render scale come down, in small steps, and never below MIN_SCALE
+     After a long stretch of fast frames it tries to give things back, one step at a time, and if that is too slow
+     it puts them away again and leaves them alone for several minutes. */
+  const noAdapt = /noadapt/.test(location.hash + location.search);
+  const MIN_SCALE = Math.min(1, MAX_SCALE), SLOW_MS = 24, FAST_MS = 19, RESTORE_AFTER = 25;
+  let accT = 0, accN = 0, goodT = 0, stage = 0, settleT = 3, probingAt = 0, noRestoreUntil = 0;
+  function applyStage() {
+    glass.setLevel(0);   // rain and window drops never switch off; only the resolution gives way when the frame rate is low
+    worldFx.lowDetail(false);
+  }
+  function setScale(v) {
+    renderScale = clamp(v, MIN_SCALE, MAX_SCALE);
+    resize();
+  }
   function adaptQuality(dt) {
-    if (S.mode === 'loading') return;
-    slowT = dt > 0.028 ? slowT + dt : Math.max(0, slowT - dt * 2);
-    if (slowT < 2 || quality >= 3) return;
-    quality++;
-    slowT = 0;
-    if (quality < 3) { pixelRatioCap = quality === 1 ? Math.min(pixelRatioCap, 1) : 0.75; resize(); }
-    else {
-      renderer.shadowMap.enabled = false;
-      scene.traverse((o) => { if (o.material) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true; });
+    if (S.mode === 'loading' || S.mode === 'paused' || noAdapt || document.hidden) { accT = accN = 0; return; }
+    if (dt > 0.2) { accT = accN = 0; settleT = Math.max(settleT, 0.6); return; }   // a hitch (tab switch, shader build): don't judge on it
+    if (settleT > 0) { settleT -= dt; return; }   // let a change settle before measuring
+    accT += dt; accN++;
+    if (accT < 0.75) return;
+    const avg = (accT / accN) * 1000;
+    accT = accN = 0;
+    const now = performance.now();
+    if (avg > SLOW_MS) {
+      goodT = 0;
+      if (probingAt && now - probingAt < 8000) noRestoreUntil = now + 300000;   // giving something back was too much: leave it off for a while
+      probingAt = 0;
+      if (renderScale > MIN_SCALE + 0.01) { stage = 3; setScale(renderScale * 0.92); settleT = 2; }
+    } else if (avg < FAST_MS) {
+      goodT += 0.75;
+      if (goodT > RESTORE_AFTER && now > noRestoreUntil && (stage > 0 || renderScale < MAX_SCALE - 0.01)) {
+        goodT = 0; probingAt = now; settleT = 2;
+        if (renderScale < MAX_SCALE - 0.01) setScale(Math.min(MAX_SCALE, renderScale * 1.1));
+        else { stage--; applyStage(); }
+      }
     }
   }
 
@@ -897,7 +1052,7 @@ async function boot() {
     requestAnimationFrame(frame);
     const raw = Math.min((now - last) / 1000, 0.1);
     last = now;
-    if (window.__game?.manual) { renderer.render(scene, camera); return; }   // tests drive the simulation by hand
+    if (window.__game?.manual) { glass.render(); return; }   // tests drive the simulation by hand
     adaptQuality(raw);
 
     let dt = raw;
@@ -914,9 +1069,41 @@ async function boot() {
     }
     if (dt === 0 && S.mode !== 'paused') animatePlayer(0);
     if (S.mode !== 'paused') cos.stepCape(dt);
+    boomGlow = Math.max(0, boomGlow - raw * 2.2);
+    hemi.intensity = 1.25 + 2.4 * boomGlow;
     updateCamera(raw);
     updateHud();
-    renderer.render(scene, camera);
+    glass.render();
+  }
+
+  /** Draw one of every spawnable thing in front of the camera for a moment. GPU uploads and shader links otherwise happen the first time something appears, which shows up as a stutter. */
+  function prewarm() {
+    worldFx.stageMode(false);
+    camera.position.set(0, 4.4, 8.2);
+    camera.lookAt(0, 1.5, -6);
+    camera.updateMatrixWorld(true);
+    const temp = [];
+    let x = -3;
+    for (const tpl of Object.values(T).flat()) {
+      const m = tpl.clone(true);
+      m.traverse((o) => { o.frustumCulled = false; });
+      m.position.set(x, 0.5, -6);
+      x += 0.4;
+      scene.add(m);
+      temp.push(m);
+    }
+    const warn = new THREE.Mesh(warnGeo, warnMat);
+    warn.position.set(0, 0.05, -4);
+    scene.add(warn);
+    temp.push(warn);
+    boom.prewarm(true);
+    crack.prewarm(true);
+    glass.render();
+    glass.render();
+    boom.prewarm(false);
+    crack.prewarm(false);
+    for (const m of temp) scene.remove(m);
+    worldFx.stageMode(true);
   }
 
   /* ---------- lifecycle: pause when the tab is hidden, survive a lost GL context ---------- */
@@ -927,9 +1114,11 @@ async function boot() {
   $('game').addEventListener('webglcontextlost', (e) => { e.preventDefault(); pauseGame(); });
 
   if (/debug/.test(location.hash + location.search)) {
-    window.__game = { S, W, world, player, T, scene, camera, renderer, fx, startGame, spawnBoss, spawnHazard, spawnTaxCuts, jump, changeLane, fastFall, pauseGame, resumeGame, hurt, gameOver, clearWorld, backToMenu, bossHeight, collide, update, updateCamera, spawnRow, cos, manual: false };
+    window.__game = { settings, worldFx, glass, rain, spawnPowerup, collectPowerup, collectTaxCut, popup, S, W, world, player, T, scene, camera, renderer, fx, startGame, spawnBoss, spawnHazard, spawnTaxCuts, jump, changeLane, fastFall, pauseGame, resumeGame, hurt, gameOver, clearWorld, boom, crack, detonate, crackOpen, tapeThrow, backToMenu, bossHeight, collide, update, updateCamera, spawnRow, cos, manual: false };
   }
 
+  glass.precompile();   // build every shader up front, so nothing hitches mid-run
+  prewarm();            // and upload every geometry and texture, by drawing one of everything once
   $('loadBar').style.width = '100%';
   $('loader').classList.add('hidden');
   show('menu', true);
