@@ -95,6 +95,22 @@ async function boot() {
   phys.gravity.set(0, -18, 0);
   phys.turbulence = 3;
   const debris = createDebris(scene, phys);
+  /** Invisible walls and a ceiling round the street (the alley's own rectangle), so anything that is flung bounces back instead of leaving the world. */
+  const bounds = [];
+  function addBounds(zNear, zFar, xHalf = 13, ceiling = 20) {
+    const mk = (x, y, z, hx, hy, hz) => {
+      const w = new Body({ type: 'box', hx, hy, hz }, 0, { restitution: 0.3, friction: 0.5 });
+      w.pos.set(x, y, z); w.prevPos.copy(w.pos); w.noSleep = true;
+      phys.add(w); bounds.push(w);
+    };
+    const zMid = (zNear + zFar) / 2, hz = (zNear - zFar) / 2 + 4, hx = xHalf + 4;
+    mk(-xHalf - 2, ceiling / 2, zMid, 2, ceiling / 2 + 4, hz);   // left wall
+    mk(xHalf + 2, ceiling / 2, zMid, 2, ceiling / 2 + 4, hz);    // right wall
+    mk(0, ceiling / 2, zFar - 2, hx, ceiling / 2 + 4, 2);        // far end
+    mk(0, ceiling / 2, zNear + 2, hx, ceiling / 2 + 4, 2);       // behind the camera
+    mk(0, ceiling + 3, zMid, hx, 3, hz);                         // the sky
+  }
+  const addRunBounds = () => addBounds(13, -108);
   const ragdolls = [];       // everything currently limp: { rag, mesh, t, kind }
   const boom = createExplosion(scene, fx, phys, debris);
   const crack = createCrack(scene, fx, phys, debris);
@@ -662,11 +678,9 @@ async function boot() {
     clearWorld();
     Object.assign(S, { time: 0, speed: 0, dist: 0, lane: 1, vx: 0, y: 0, vy: 0, onGround: true, airT: 0, fastFalling: false, invuln: 0, shake: 0, hitStop: 0, slow: 1, timeScale: 1, thrown: 0, tapeLeft: 0, noSpin: false, throwing: null, blast: null, cine: null, glance: 0, lives: 99 });
     player.position.set(0, 0, 0);
-    for (const [x, y, z, hx, hy, hz] of [[-12.5, 10, -10, 0.5, 12, 30], [12.5, 10, -10, 0.5, 12, 30], [0, 10, -40.5, 14, 12, 0.5], [0, 10, 18.5, 14, 12, 0.5]]) {   // invisible walls: nothing leaves the street
-      const wall = new Body({ type: 'box', hx, hy, hz }, 0, { restitution: 0.3, friction: 0.5 });
-      wall.pos.set(x, y, z); wall.prevPos.copy(wall.pos);
-      phys.add(wall);
-    }
+    for (const w of bounds) phys.remove(w);   // the sandbox's street is shorter
+    bounds.length = 0;
+    addBounds(18, -40, 12.5);
     show('menu', false);
     sb.yaw = 0; sb.pitch = 0.24; sb.dist = 9; sb.slow = false; sb.bossN = 0;
     $('sbSlow').classList.remove('on');
@@ -1071,6 +1085,8 @@ async function boot() {
     S.blast = null; S.throwing = null; S.cine = null;
     debris.clear();
     phys.clear();
+    bounds.length = 0;
+    addRunBounds();
     fx.clear();
     crack.clear();
     boom.clear();
@@ -1883,6 +1899,7 @@ async function boot() {
   }
 
   applyStage();         // (a 'Low' graphics setting starts with the extras already off)
+  addRunBounds();
   glass.precompile();   // build every shader up front, so nothing hitches mid-run
   prewarm();            // and upload every geometry and texture, by drawing one of everything once
   $('loadBar').style.width = '100%';
