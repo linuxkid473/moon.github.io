@@ -274,6 +274,10 @@ export class World {
       _q.premultiply(b.quat);   // dq = q * prevQ^-1
       const s = _q.w < 0 ? -2 / h : 2 / h;
       b.omega.set(_q.x * s, _q.y * s, _q.z * s);
+      // safety nets: nothing may be faster than a bullet, and a body that goes non-finite is put back where it was
+      if (!(b.vel.lengthSq() < 8100)) { if (Number.isFinite(b.vel.lengthSq())) b.vel.setLength(90); else { b.pos.copy(b.prevPos); b.vel.set(0, 0, 0); } }
+      if (!(b.omega.lengthSq() < 4900)) { if (Number.isFinite(b.omega.lengthSq())) b.omega.setLength(70); else b.omega.set(0, 0, 0); }
+      if (!Number.isFinite(b.pos.x + b.pos.y + b.pos.z)) { b.pos.copy(b.prevPos); b.quat.copy(b.prevQuat); b.vel.set(0, 0, 0); b.omega.set(0, 0, 0); }
     }
 
     // --- restitution and friction
@@ -295,8 +299,8 @@ export class World {
     _n.set(0, 1, 0).applyQuaternion(b.quat);
     const vn = _a.dot(_n);
     const k = b.aero * (b.aeroArea || 1) / b.mass;
-    // normal drag (quadratic) and a little skin friction along the face
-    b.vel.addScaledVector(_n, -k * vn * Math.abs(vn) * h);
+    // normal drag (quadratic), solved implicitly so it can never overshoot and blow up at high speed, and a little skin friction along the face
+    b.vel.addScaledVector(_n, -vn * (1 - 1 / (1 + k * Math.abs(vn) * h)));
     _b.copy(_a).addScaledVector(_n, -vn);
     b.vel.addScaledVector(_b, -0.15 * k * h);
     // the centre of pressure trails behind: a fluttering torque that turns the sheet to face the airflow

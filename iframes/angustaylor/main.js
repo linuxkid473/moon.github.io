@@ -747,7 +747,7 @@ async function boot() {
   function sandboxCamera(dt) {
     const lead = playerRag && !playerRag.rag.released ? playerRag.rag.centre : null;
     _look.set(0, 1.3, 0);
-    if (lead) _look.lerp(lead, 0.7);
+    if (lead && Number.isFinite(lead.x + lead.y + lead.z)) _look.lerp(_cine.set(clamp(lead.x, -11, 11), clamp(lead.y, 0.8, 6), clamp(lead.z, -38, 16)), 0.7);
     camFollow.lerp(_look, 1 - Math.exp(-3 * dt));
     const cp = Math.cos(sb.pitch), tt = performance.now() / 1000, amp = reduceMotion() ? 0 : S.shake * S.shake * 0.5 + S.shake * 0.12;
     const nz = (f, s) => Math.sin(tt * f + s) * 0.6 + Math.sin(tt * f * 2.37 + s * 1.9) * 0.4;
@@ -1572,7 +1572,7 @@ async function boot() {
   }
 
   let camX = 0, fovKick = 0;
-  const _look = new THREE.Vector3();
+  const _look = new THREE.Vector3(), _cine = new THREE.Vector3();
   function updateCamera(dt) {
     if (S.mode === 'menu') { worldFx.menuCamera(); return; }
     if (S.mode === 'sandbox') { sandboxCamera(dt); return; }
@@ -1587,10 +1587,11 @@ async function boot() {
     if (S.cine && S.mode === 'playing') {   // follow a boss as he is launched: the camera swings round to watch him fly
       const c = S.cine;
       c.t += dt;
-      if (c.e && c.e.rag.active && c.t < 2.4) {
-        const w = Math.sin(Math.PI * clamp(c.t / 2.4, 0, 1)) * 0.9;
-        _look.lerp(c.e.rag.centre, w);
-        camera.position.y += (c.e.rag.centre.y * 0.25) * w;
+      if (c.e && c.e.rag.active && c.t < 1.6 && Number.isFinite(c.e.rag.centre.x + c.e.rag.centre.y + c.e.rag.centre.z)) {
+        // a glance towards him, not a chase: the target is clamped to stay over the road, so the street is never lost
+        const w = Math.sin(Math.PI * clamp(c.t / 1.6, 0, 1)) * 0.55, rc = c.e.rag.centre;
+        _look.lerp(_cine.set(clamp(rc.x, -9, 9), clamp(rc.y, 0.8, 6), clamp(rc.z, -42, 3)), w);
+        camera.position.y += _cine.y * 0.12 * w;
       } else S.cine = null;
     }
     camera.lookAt(_look);
@@ -1600,7 +1601,8 @@ async function boot() {
     const target = reduceMotion() ? 0 : clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1) * 7 + (S.budgetT > 0 ? 3 : 0) + (S.cutT > 0 ? 2 : 0) + (S.car ? 4 : 0);   // a wider lens as you speed up and during power-ups
     fovKick = damp(fovKick, S.mode === 'playing' ? target : 0, 2, dt);
     const base = innerWidth / innerHeight < 0.9 ? 78 : 62;
-    if (Math.abs(camera.fov - (base + fovKick)) > 0.01) { camera.fov = base + fovKick; camera.updateProjectionMatrix(); }
+    if (Math.abs(camera.fov - (base + fovKick)) > 0.01) { camera.fov = clamp(base + fovKick, 40, 100); camera.updateProjectionMatrix(); }
+    if (!Number.isFinite(camera.position.x + camera.position.y + camera.position.z) || camera.position.y > 40 || Math.abs(camera.position.x) > 40) { camera.position.set(camX, 4.4, 8.2); camera.lookAt(0, 1.5, -6); S.cine = null; }   // never let the camera leave the scene
   }
 
   /* ---------- per-step simulation ---------- */
