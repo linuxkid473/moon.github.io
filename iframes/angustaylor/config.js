@@ -23,8 +23,8 @@ export const JUMP_V = Math.sqrt(2 * PHYS.gravityUp * PHYS.jumpHeight);
 /** Difficulty ramp. speed eases from START to MAX; rows are spaced by distance but never closer than MIN_GAP seconds. */
 export const RUN = { startSpeed: 14, maxSpeed: 34, rampTime: 75, minRowGap: 0.66 };
 
-/** Power-ups: ribbon-cutting scissors (cut straight through hazards) and a consultant (takes the blame for one hit). */
-export const POWER = { scissorsSecs: 6, scissorsBonus: 25, powerupChance: 0.07, goldChance: 0.07, goldValue: 10 };
+/** Power-ups: ribbon-cutting scissors (cut straight through hazards) and a consultant (a blame shield that cracks open everything he runs into for shieldSecs, or until a boss hits him). */
+export const POWER = { scissorsSecs: 6, scissorsBonus: 25, shieldSecs: 10, crackBonus: 15, powerupChance: 0.07, goldChance: 0.07, goldValue: 10 };
 
 export const STREAK_CALLS = { 10: 'DEREGULATION!', 25: 'WHAT RED TAPE?', 50: 'SMALLER GOVERNMENT!', 100: 'LAISSEZ-FAIRE LEGEND!' };
 export const PICKUP_POPS = ['TAX CUT!', 'LOWER TAXES!', 'CHA-CHING!', 'ASPIRATION!', 'FEWER FORMS!'];
@@ -43,7 +43,7 @@ export const CHARACTERS = {
   ANGUS: {
     id: 'ANGUS', name: 'Angus Taylah', label: 'MP ANGUS',
     face: 'faces/angus.webp', skin: 0xd78f74, hair: { color: 0x4a4638, style: 'short' }, headScale: 1.35,
-    outfit: { pants: 0x2b2f3a, shirt: 0xc4dcf2, tie: 0x1f3f8f, flapTie: true, briefcase: true },
+    outfit: { pants: 0x2b2f3a, shirt: 0x0f2c6e, tie: 0xe6ebf5, flapTie: true, briefcase: true },
   },
   ALBO: {
     id: 'ALBO', name: 'PM Albo', label: 'PM ALBO',
@@ -70,4 +70,12 @@ export const ITEMS = [   // placeholder prices: change freely
   { id: 'scissors', name: 'Giant red-tape scissors', price: 90, slots: ['rhand'] },
   { id: 'sausage', name: 'Democracy sausage', price: 25, slots: ['lhand'] },
   { id: 'sign', name: '"Vote 1" campaign sign', price: 40, slots: ['lhand'] },
+  { id: 'bomb', name: 'Tax cut bomb: blows bosses sky-high and clears the road', price: 15, consumable: true },
+  { id: 'car', name: 'The Angus Tax Car: 15 minutes of driving. Smash through everything and send bosses flying off the map', price: 100, consumable: true },
 ];
+
+/** The Angus Tax Car (key C, or the car button). Buying adds `secs` of driving time; it only runs down while you are driving. Bosses it hits are thrown off the map. */
+export const CAR = { secs: 900, maxSecs: 1800, smashScore: 25, bossScore: 500, bossEveryScale: 0.45 };
+
+/** The tax cut bomb (key B): thrown at the nearest boss; the blast wave runs down the road wrecking hazards and sending bosses flying. */
+export const BOMB = { max: 5, freePerRun: 1, waveSpeed: 95, waveReach: 110, bossScore: 500, aimSecs: [0.55, 1.0] };

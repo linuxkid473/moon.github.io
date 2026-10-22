@@ -11,7 +11,47 @@ import { SKIN_FALLBACK } from './config.js';
 
 const HEAD_RX = 0.27, HEAD_RY = 0.33, HEAD_RZ = 0.25;   // head radii at scale 1
 export const HAIR = { black: 0x1c1814, brown: 0x3b2a1f, grey: 0x9a9a9a, white: 0xe6e6e6 };
-const pmat = (color, opts = {}) => mat(color, { flatShading: true, ...opts });
+/** A tileable woven-twill normal map, so cloth has real micro-detail that catches the light. */
+let fabricTex = null;
+function fabricNormal() {
+  if (fabricTex) return fabricTex;
+  const N = 128, hgt = new Float32Array(N * N), data = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const twill = 0.5 + 0.5 * Math.sin(((x + y) / 4) * Math.PI) * (0.6 + 0.4 * Math.sin((x - y) / 16 * Math.PI));
+    const thread = 0.5 + 0.5 * Math.sin((x / 2) * Math.PI) * Math.sin((y / 2) * Math.PI);
+    hgt[y * N + x] = twill * 0.6 + thread * 0.4 + (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453 % 1) * 0.12;
+  }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const dx = hgt[y * N + (x + 1) % N] - hgt[y * N + (x + N - 1) % N], dy = hgt[((y + 1) % N) * N + x] - hgt[((y + N - 1) % N) * N + x];
+    const nx = -dx * 2.2, ny = -dy * 2.2, nz = 1, l = Math.hypot(nx, ny, nz);
+    const i = (y * N + x) * 4;
+    data[i] = (nx / l * 0.5 + 0.5) * 255; data[i + 1] = (ny / l * 0.5 + 0.5) * 255; data[i + 2] = (nz / l * 0.5 + 0.5) * 255; data[i + 3] = 255;
+  }
+  fabricTex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+  fabricTex.wrapS = fabricTex.wrapT = THREE.RepeatWrapping;
+  fabricTex.repeat.set(5, 5);
+  fabricTex.anisotropy = 8; fabricTex.generateMipmaps = true; fabricTex.minFilter = THREE.LinearMipmapLinearFilter;
+  fabricTex.needsUpdate = true;
+  return fabricTex;
+}
+const matCache = new Map();
+/** Smooth-shaded physical materials. `cloth` adds the weave and a soft sheen; `gloss` makes polished leather. */
+function pmat(color, opts = {}) {
+  const key = `${color}|${JSON.stringify(opts)}`;
+  if (!matCache.has(key)) {
+    const { cloth, gloss, ...rest } = opts;
+    const m = new THREE.MeshPhysicalMaterial({ color, roughness: 0.7, flatShading: false, ...rest });
+    if (cloth) {
+      m.normalMap = fabricNormal(); m.normalScale.set(0.6, 0.6);
+      m.sheen = 0.35; m.sheenRoughness = 0.6; m.sheenColor = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.25);
+    }
+    if (gloss) { m.clearcoat = 1; m.clearcoatRoughness = 0.18; }
+    matCache.set(key, m);
+  }
+  return matCache.get(key);
+}
+// detail multiplier: round things are built with many more segments than the original low-poly look
+const DETAIL = 2.6;
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
 /** Squeeze the lower half of a unit sphere into a jaw. */
@@ -21,7 +61,7 @@ function jaw(x, y, z) {
 }
 
 function skullGeometry(hairCol, skinCol, low) {
-  const geo = new THREE.SphereGeometry(1, 18, 12);
+  const geo = new THREE.SphereGeometry(1, 48, 34);
   const p = geo.attributes.position;
   const hair = new THREE.Color(hairCol), skin = new THREE.Color(skinCol), c = new THREE.Color();
   const colors = new Float32Array(p.count * 3);
@@ -45,7 +85,7 @@ function skullGeometry(hairCol, skinCol, low) {
  * undistorted (a sphere would stretch and cut off the edges). It bulges only slightly towards the middle.
  */
 function facePlateGeometry() {
-  const geo = new THREE.PlaneGeometry(2, 2, 14, 14);
+  const geo = new THREE.PlaneGeometry(2, 2, 32, 32);
   const p = geo.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), r2 = x * x + y * y;
@@ -105,100 +145,128 @@ function buildHead(o, skin) {
 
   const hair = o.hair || { color: 0x3b2a1f, style: 'short' };
   const bob = hair.style === 'bob';
-  head.add(mesh(skullGeometry(hair.color, o.skin ?? SKIN_FALLBACK, bob ? -0.7 : -0.25), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true })));
+  head.add(mesh(skullGeometry(hair.color, o.skin ?? SKIN_FALLBACK, bob ? -0.7 : -0.25), new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.62, flatShading: false, sheen: 0.4, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xffd5c0) })));
   const plate = new THREE.Mesh(facePlateGeometry(), faceMaterial(o));
   plate.name = 'face';
   head.add(plate);
   for (const side of [-1, 1]) {
-    const ear = mesh(new THREE.SphereGeometry(1, 5, 4), skin);
+    const ear = mesh(new THREE.SphereGeometry(1, 14, 10), skin);
     ear.scale.set(0.03, 0.07, 0.045);
     ear.position.set(side * HEAD_RX * 0.97, -0.03, -0.02);
     head.add(ear);
   }
   // hair volume behind and above the ears (open at the front, where the photo's own hair shows)
-  const shell = mesh(new THREE.SphereGeometry(1, 14, 8, Math.PI, Math.PI, 0, bob ? 2.35 : 1.95), pmat(hair.color, { roughness: 0.9 }));
+  const shell = mesh(new THREE.SphereGeometry(1, 40, 24, Math.PI, Math.PI, 0, bob ? 2.35 : 1.95), pmat(hair.color, { roughness: 0.9 }));
   shell.scale.set(HEAD_RX * (bob ? 1.14 : 1.06), HEAD_RY * (bob ? 1.06 : 1.03), HEAD_RZ * (bob ? 1.2 : 1.1));
   shell.position.set(0, bob ? 0.01 : 0.02, -0.01);
   head.add(shell);
   return head;
 }
 
+
+/** Height of the waist: the spine group pivots here, so the chest can lean and twist over the hips. */
+export const SPINE_Y = 1.3;
+/** A pose is POSE_N numbers (see the list above applyPose). */
+export const POSE_N = 17;
+
 /** Build a person from a character config plus its outfit. `o.faceImage` is the loaded portrait (or null). */
 export function buildPerson(o) {
   const out = o.outfit || {};
   const g = new THREE.Group();
-  const shirt = pmat(out.shirt || 0xffffff, { roughness: 0.5 });
-  const jacket = out.suit ? pmat(out.suit, { roughness: 0.6 }) : shirt;
-  const jacketDark = out.suit ? pmat(new THREE.Color(out.suit).multiplyScalar(0.72).getHex(), { roughness: 0.6 }) : shirt;
-  const pants = pmat(out.pants, { roughness: 0.6 });
-  const skin = pmat(o.skin ?? SKIN_FALLBACK, { roughness: 0.6 });
+  const shirt = pmat(out.shirt || 0xffffff, { roughness: 0.55, cloth: true });
+  const jacket = out.suit ? pmat(out.suit, { roughness: 0.62, cloth: true }) : shirt;
+  const jacketDark = out.suit ? pmat(new THREE.Color(out.suit).multiplyScalar(0.72).getHex(), { roughness: 0.6, cloth: true }) : shirt;
+  const pants = pmat(out.pants, { roughness: 0.62, cloth: true });
+  const skin = pmat(o.skin ?? SKIN_FALLBACK, { roughness: 0.55, sheen: 0.5, sheenRoughness: 0.55, sheenColor: new THREE.Color(0xffc8b0) });
   const dark = pmat(0x1a1a1a, { roughness: 0.4 });
-  const shoe = pmat(0x161616, { roughness: 0.35 });
+  const shoe = pmat(0x161616, { roughness: 0.3, gloss: true });
   const sole = pmat(0x0a0a0a, { roughness: 0.8 });
-  const pantsDark = pmat(new THREE.Color(out.pants).multiplyScalar(0.72).getHex(), { roughness: 0.6 });
+  const pantsDark = pmat(new THREE.Color(out.pants).multiplyScalar(0.72).getHex(), { roughness: 0.6, cloth: true });
   const watchFace = pmat(0xc9b458, { roughness: 0.3 });
   const tieMat = out.tie ? pmat(out.tie, { roughness: 0.4 }) : null;
 
   const ell = (rx, ry, rz, material, x, y, z, seg = 6) => {
-    const m = mesh(new THREE.SphereGeometry(1, seg, Math.max(3, seg - 2)), material);
+    const w = Math.max(16, Math.round(seg * DETAIL)), hh = Math.max(10, Math.round(seg * DETAIL * 0.7));
+    const m = mesh(new THREE.SphereGeometry(1, w, hh), material);
     m.scale.set(rx, ry, rz);
     m.position.set(x, y, z);
     return m;
   };
   const cyl = (rt, rb, h, sides, material, x, y, z, sz = 1) => {
-    const m = mesh(new THREE.CylinderGeometry(rt, rb, h, sides, 1, false, Math.PI / sides), material);
+    const sd = Math.max(20, Math.round(sides * DETAIL));
+    const m = mesh(new THREE.CylinderGeometry(rt, rb, h, sd, 2, false, Math.PI / sd), material);
     m.position.set(x, y, z);
     m.scale.z = sz;
     return m;
   };
 
-  // legs (hip pivots): thigh, knee, shin, shoe
+  // Everything above the waist hangs from one pivot, so the run cycle can twist and lean the chest against the hips.
+  // `up` re-parents a part built in body space (y measured from the floor) into that pivot.
+  const upper = new THREE.Group();
+  upper.name = 'spine';
+  upper.position.set(0, SPINE_Y, 0);
+  g.add(upper);
+  const up = (part) => { part.position.y -= SPINE_Y; upper.add(part); return part; };
+  const FZ = 0.028;   // details on the front of the chest sit this far proud of the rounded ribcage
+
+  // legs (hip pivots): thigh, knee, shin and calf, ankle, shoe
   for (const side of [-1, 1]) {
     const hip = new THREE.Group();
     hip.name = side < 0 ? 'legL' : 'legR';
     hip.position.set(side * 0.14, 1.02, 0);
-    hip.add(cyl(0.115, 0.088, 0.52, 6, pants, 0, -0.25, 0));
-    hip.add(box(0.025, 0.42, 0.025, pantsDark, 0, -0.25, 0.1));   // a pressed crease down the front of the trousers
+    hip.add(cyl(0.118, 0.09, 0.52, 8, pants, 0, -0.25, 0));
+    hip.add(ell(0.118, 0.21, 0.122, pants, 0, -0.19, 0.01, 8));   // the thigh's muscle
+    hip.add(box(0.025, 0.42, 0.025, pantsDark, 0, -0.25, 0.112));   // a pressed crease down the front of the trousers
     const knee = new THREE.Group();
     knee.name = side < 0 ? 'kneeL' : 'kneeR';
     knee.position.set(0, -0.51, 0);
-    knee.add(ell(0.092, 0.092, 0.092, pants, 0, 0, 0, 5));
-    knee.add(cyl(0.088, 0.064, 0.5, 6, pants, 0, -0.25, 0));
-    knee.add(box(0.025, 0.4, 0.025, pantsDark, 0, -0.25, 0.085));
-    knee.add(ell(0.105, 0.06, 0.2, shoe, 0, -0.5, 0.07, 6));   // the shoe
-    knee.add(box(0.19, 0.035, 0.4, sole, 0, -0.545, 0.07));    // and its sole
+    knee.add(ell(0.095, 0.095, 0.095, pants, 0, 0, 0, 6));
+    knee.add(cyl(0.088, 0.064, 0.5, 8, pants, 0, -0.25, 0));
+    knee.add(ell(0.086, 0.16, 0.095, pants, 0, -0.14, -0.03, 7));   // the calf
+    knee.add(box(0.025, 0.4, 0.025, pantsDark, 0, -0.25, 0.088));
+    const ankle = new THREE.Group();   // the foot pitches here: toes point as it pushes off, flex as it swings through
+    ankle.name = side < 0 ? 'ankleL' : 'ankleR';
+    ankle.position.set(0, -0.5, 0);
+    ankle.add(ell(0.105, 0.064, 0.21, shoe, 0, 0, 0.07, 7));   // the shoe
+    ankle.add(box(0.19, 0.035, 0.4, sole, 0, -0.045, 0.07));    // and its sole
+    ankle.add(box(0.15, 0.05, 0.1, sole, 0, -0.025, -0.08));    // heel
+    knee.add(ankle);
     hip.add(knee);
     g.add(hip);
   }
 
-  // pelvis, belt
-  g.add(cyl(0.26, 0.24, 0.26, 6, pants, 0, 1.1, 0, 0.6));
+  // pelvis and seat
+  g.add(cyl(0.26, 0.24, 0.26, 8, pants, 0, 1.1, 0, 0.62));
+  for (const s of [-1, 1]) g.add(ell(0.125, 0.14, 0.13, pants, s * 0.105, 1.06, -0.07, 6));
   if (!out.suit) {   // high-waisted trousers, belt and buckle, shirt bunched over the belt
     const leather = pmat(0x2a1a10, { roughness: 0.4 });
-    g.add(cyl(0.255, 0.265, 0.26, 6, pants, 0, 1.23, 0, 0.6));
-    g.add(cyl(0.272, 0.272, 0.09, 6, leather, 0, 1.32, 0, 0.6));
-    g.add(box(0.09, 0.07, 0.04, pmat(0xc9b458, { roughness: 0.3 }), 0, 1.32, 0.16));
-    for (const s of [-1, 1]) g.add(box(0.025, 0.1, 0.03, leather, s * 0.12, 1.32, 0.15));
-    g.add(cyl(0.268, 0.268, 0.1, 6, pmat(new THREE.Color(out.shirt || 0xffffff).multiplyScalar(0.88).getHex(), { roughness: 0.5 }), 0, 1.43, 0, 0.58));
+    g.add(cyl(0.255, 0.265, 0.26, 8, pants, 0, 1.23, 0, 0.62));
+    up(cyl(0.272, 0.272, 0.09, 8, leather, 0, 1.32, 0, 0.62));
+    up(box(0.09, 0.07, 0.04, pmat(0xc9b458, { roughness: 0.3 }), 0, 1.32, 0.17));
+    for (const s of [-1, 1]) up(box(0.025, 0.1, 0.03, leather, s * 0.12, 1.32, 0.16));
+    up(cyl(0.268, 0.268, 0.1, 8, pmat(new THREE.Color(out.shirt || 0xffffff).multiplyScalar(0.88).getHex(), { roughness: 0.5 }), 0, 1.43, 0, 0.6));
   }
 
-  // torso and shoulders
-  g.add(cyl(0.33, 0.22, 1.0, 6, jacket, 0, 1.7, 0, 0.55));
-  for (const side of [-1, 1]) g.add(ell(0.15, 0.12, 0.14, jacket, side * 0.34, 2.14, 0, 4));
+  // torso: a waist that flares into a rounded ribcage, sloping trapezius and shoulder caps
+  up(cyl(0.268, 0.225, 0.52, 8, jacket, 0, 1.53, 0, 0.62));
+  up(ell(0.335, 0.36, 0.172, jacket, 0, 1.96, 0, 10));
+  up(ell(0.2, 0.085, 0.14, jacket, 0, 2.22, -0.005, 6));
+  for (const side of [-1, 1]) up(ell(0.145, 0.13, 0.135, jacket, side * 0.35, 2.14, 0, 6));
 
   if (out.suit) {
-    g.add(box(0.15, 0.5, 0.04, shirt, 0, 1.92, 0.138));
+    up(box(0.15, 0.5, 0.04, shirt, 0, 1.92, 0.138 + FZ));
     for (const s of [-1, 1]) {   // lapels
-      const lap = box(0.09, 0.52, 0.04, jacketDark, s * 0.1, 1.92, 0.143);
+      const lap = box(0.09, 0.52, 0.04, jacketDark, s * 0.1, 1.92, 0.143 + FZ);
       lap.rotation.z = -s * 0.22;
-      g.add(lap);
+      up(lap);
     }
-    g.add(box(0.075, 0.06, 0.03, pmat(0xffffff, { roughness: 0.5 }), 0.14, 1.97, 0.15), box(0.032, 0.032, 0.03, watchFace, -0.13, 2.0, 0.152));   // a pocket square and a lapel pin
+    up(box(0.075, 0.06, 0.03, pmat(0xffffff, { roughness: 0.5 }), 0.14, 1.97, 0.15 + FZ));   // a pocket square
+    up(box(0.032, 0.032, 0.03, watchFace, -0.13, 2.0, 0.152 + FZ));                           // and a lapel pin
   } else {
     for (const s of [-1, 1]) {   // collar
       const c = box(0.11, 0.07, 0.05, shirt, s * 0.055, 2.22, 0.11);
       c.rotation.z = s * 0.45;
-      g.add(c);
+      up(c);
     }
   }
   if (tieMat) {
@@ -206,14 +274,14 @@ export function buildPerson(o) {
       const blade = mesh(new THREE.CylinderGeometry(0.045, 0.14, 0.62, 4, 1, false, Math.PI / 4), tieMat);
       blade.position.set(0, 1.78, 0.158);
       blade.scale.z = 0.4;
-      g.add(blade);
-      g.add(box(0.12, 0.1, 0.08, tieMat, 0, 2.08, 0.16));
+      up(blade);
+      up(box(0.12, 0.1, 0.08, tieMat, 0, 2.08, 0.16));
     } else {
-      g.add(box(0.07, 0.44, 0.04, tieMat, 0, 1.84, 0.148));
-      g.add(box(0.08, 0.07, 0.05, tieMat, 0, 2.07, 0.153));
+      up(box(0.07, 0.44, 0.04, tieMat, 0, 1.84, 0.148 + FZ));
+      up(box(0.08, 0.07, 0.05, tieMat, 0, 2.07, 0.153 + FZ));
     }
   }
-  if (!out.suit) g.add(cyl(0.115, 0.14, 0.09, 6, pmat(0xffffff, { roughness: 0.5 }), 0, 2.27, 0, 0.85));   // collar ring, so it shows from behind
+  if (!out.suit) up(cyl(0.115, 0.14, 0.09, 8, pmat(0xffffff, { roughness: 0.5 }), 0, 2.27, 0, 0.85));   // collar ring, so it shows from behind
   if (tieMat && out.flapTie) {   // the end of the tie streams over his shoulder as he runs
     const flap = new THREE.Group();
     flap.name = 'tieFlap';
@@ -224,24 +292,26 @@ export function buildPerson(o) {
     fb.rotation.z = Math.PI / 2;
     fb.position.x = 0.45;
     flap.add(fb);
-    g.add(flap);
+    up(flap);
   }
 
-  // arms (shoulder pivots): upper arm, elbow, forearm, cuff, hand
+  // arms (shoulder pivots): upper arm and bicep, elbow, forearm, cuff, hand
   for (const side of [-1, 1]) {
     const shoulder = new THREE.Group();
     shoulder.name = side < 0 ? 'armL' : 'armR';
     shoulder.position.set(side * 0.37, 2.15, 0);
-    shoulder.add(cyl(0.09, 0.072, 0.56, 6, jacket, 0, -0.28, 0));
+    shoulder.add(cyl(0.092, 0.07, 0.56, 8, jacket, 0, -0.28, 0));
+    shoulder.add(ell(0.088, 0.16, 0.094, jacket, 0, -0.2, 0.012, 7));   // bicep and tricep
     const elbow = new THREE.Group();
     elbow.name = side < 0 ? 'elbowL' : 'elbowR';
     elbow.position.set(0, -0.57, 0);
-    elbow.add(ell(0.076, 0.076, 0.076, jacket, 0, 0, 0, 5));
-    elbow.add(cyl(0.07, 0.056, 0.5, 6, jacket, 0, -0.25, 0));
-    elbow.add(cyl(0.062, 0.062, 0.07, 6, out.suit ? shirt : jacket, 0, -0.5, 0));
+    elbow.add(ell(0.078, 0.078, 0.078, jacket, 0, 0, 0, 6));
+    elbow.add(cyl(0.072, 0.054, 0.5, 8, jacket, 0, -0.25, 0));
+    elbow.add(ell(0.076, 0.15, 0.08, jacket, 0, -0.13, 0.005, 7));   // forearm
+    elbow.add(cyl(0.062, 0.062, 0.07, 8, out.suit ? shirt : jacket, 0, -0.5, 0));
     elbow.add(box(0.11, 0.12, 0.06, skin, 0, -0.58, 0));
-    elbow.add(box(0.1, 0.1, 0.048, skin, 0, -0.68, 0.002));
-    elbow.add(box(0.03, 0.09, 0.04, skin, -side * 0.065, -0.6, 0.03));
+    elbow.add(ell(0.056, 0.058, 0.034, skin, 0, -0.68, 0.01, 6));   // fingers, loosely curled
+    elbow.add(box(0.03, 0.09, 0.04, skin, -side * 0.065, -0.6, 0.03));   // thumb
     if (side < 0) elbow.add(box(0.14, 0.05, 0.14, dark, 0, -0.47, 0), box(0.06, 0.012, 0.06, watchFace, 0, -0.47, 0.072));   // a watch on the left wrist
     if (side > 0 && out.briefcase) elbow.add(box(0.34, 0.24, 0.1, pmat(0x6b3f1f, { roughness: 0.5 }), 0, -0.83, 0.06));
     if (side > 0 && out.mic) {
@@ -249,11 +319,11 @@ export function buildPerson(o) {
       elbow.add(box(0.11, 0.13, 0.11, pmat(0x8a8f99, { roughness: 0.4 }), 0, -1.03, 0.06));
     }
     shoulder.add(elbow);
-    g.add(shoulder);
+    up(shoulder);
   }
 
-  g.add(cyl(0.075, 0.085, 0.2, 6, skin, 0, 2.3, 0));   // neck
-  g.add(buildHead(o, skin));
+  up(cyl(0.08, 0.092, 0.22, 8, skin, 0, 2.3, 0));   // neck
+  up(buildHead(o, skin));
 
   const headTop = 2.26 + 2 * HEAD_RY * (o.headScale ?? 1);
   g.userData.headTop = headTop * (o.scale || 1);
@@ -271,15 +341,17 @@ export function buildPerson(o) {
 }
 
 /* ---------- poses ---------- */
-// A pose is 12 numbers:
+// A pose is 17 numbers:
 //   0 legL, 1 legR (hip swing), 2 kneeL, 3 kneeR (knee bend), 4 armL, 5 armR (shoulder swing),
-//   6 elbowL, 7 elbowR (elbow bend), 8 armL, 9 armR (arm out to the side), 10 elbowL, 11 elbowR (forearm sideways)
+//   6 elbowL, 7 elbowR (elbow bend), 8 armL, 9 armR (arm out to the side), 10 elbowL, 11 elbowR (forearm sideways),
+//   12 chest twist, 13 chest lean (forward is positive), 14 chest sway (sideways), 15 ankleL, 16 ankleR (toes down is positive)
+const JOINTS = ['legL', 'legR', 'kneeL', 'kneeR', 'ankleL', 'ankleR', 'armL', 'armR', 'elbowL', 'elbowR', 'spine'];
 const jointCache = new WeakMap();
 function joints(root) {
   let j = jointCache.get(root);
   if (!j) {
     j = {};
-    for (const n of ['legL', 'legR', 'kneeL', 'kneeR', 'armL', 'armR', 'elbowL', 'elbowR']) j[n] = root.getObjectByName(n);
+    for (const n of JOINTS) j[n] = root.getObjectByName(n);
     jointCache.set(root, j);
   }
   return j;
@@ -292,21 +364,33 @@ export function applyPose(root, a) {
   j.elbowL.rotation.x = a[6]; j.elbowR.rotation.x = a[7];
   j.armL.rotation.z = a[8] || 0; j.armR.rotation.z = a[9] || 0;
   j.elbowL.rotation.z = a[10] || 0; j.elbowR.rotation.z = a[11] || 0;
+  j.spine.rotation.set(a[13] || 0, a[12] || 0, a[14] || 0);
+  j.ankleL.rotation.x = a[15] || 0; j.ankleR.rotation.x = a[16] || 0;
 }
-/** Run cycle: hips swing, each knee folds as its leg comes forward, arms swing against the legs. amp 0 = standing, 1 = running. */
+/**
+ * Run cycle. Hips swing, each knee folds hard as its leg comes through and cushions the landing, the feet roll
+ * from heel to toe, the arms pump against the legs with bent elbows, and the chest twists against the hips and
+ * leans into the run. amp 0 = standing, 1 = running.
+ */
 export function cyclePose(phase, amp) {
-  const s = Math.sin(phase), c = Math.cos(phase);
+  const s = Math.sin(phase), c = Math.cos(phase), s2 = Math.sin(phase * 2);
+  const swing = (x) => Math.pow(0.5 - 0.5 * x, 3);   // 0 most of the time, peaking as that leg swings through
   return [
-    s * 0.62 * amp, -s * 0.62 * amp,
-    (0.12 + 1.0 * Math.pow(0.5 - 0.5 * c, 3)) * amp, (0.12 + 1.0 * Math.pow(0.5 + 0.5 * c, 3)) * amp,
-    -s * 0.6 * amp, s * 0.6 * amp,
-    -(0.15 + (0.7 + 0.45 * (0.5 + 0.5 * s)) * amp), -(0.15 + (0.7 + 0.45 * (0.5 - 0.5 * s)) * amp),
-    0, 0, 0, 0,
+    (s * 0.66 - 0.06) * amp, (-s * 0.66 - 0.06) * amp,
+    (0.2 + 1.25 * swing(c)) * amp, (0.2 + 1.25 * swing(-c)) * amp,
+    -s * 0.72 * amp, s * 0.72 * amp,
+    -(0.35 + (0.85 + 0.5 * (0.5 + 0.5 * s)) * amp), -(0.35 + (0.85 + 0.5 * (0.5 - 0.5 * s)) * amp),
+    -0.1 * amp, 0.1 * amp, 0, 0,
+    s * 0.24 * amp, (0.1 + 0.04 * s2) * amp, -s * 0.05 * amp,
+    (0.12 + 0.5 * s) * amp, (0.12 - 0.5 * s) * amp,
   ];
 }
-export const AIR_POSE = [-0.9, 0.4, 1.2, 1.5, -2.5, -2.5, -0.5, -0.5, -0.3, 0.3, 0, 0];   // stride jump: lead knee up, arms thrown up
-export const FALL_POSE = [-0.4, 0.2, 0.7, 0.9, -1.7, -1.7, -0.4, -0.4, -0.5, 0.5, 0, 0];   // arms wide while falling fast
-export const MENU_POSE = [0, 0, 0.05, 0.05, 0, 0, -0.2, -0.3, -0.6, 1.15, 1.5, 0];         // one hand on his hip, the other out to the sign
+//                         legL   legR  kneeL kneeR  armL    armR   elbL   elbR  armLz armRz  eLz   eRz  twist lean sway ankL  ankR
+export const LAUNCH_POSE = [ 0.35,  -0.2,  0.15,  0.9,  -2.6,  -2.6,  -0.3,  -0.3, -0.35, 0.35,  0,    0,    0,   -0.05, 0,  0.9,  0.8];   // the take-off: pushed up tall, toes pointed, arms thrown up
+export const AIR_POSE =    [-0.9,   0.4,   1.2,   1.5,  -2.5,  -2.5,  -0.5,  -0.5, -0.3,  0.3,   0,    0,    0.05, 0.1,  0,  0.5,  0.5];   // stride jump: lead knee up, arms thrown up
+export const TUCK_POSE =   [-1.5,  -1.1,   1.9,   1.9,  -1.4,  -1.4,  -1.3,  -1.3, -0.6,  0.6,   0,    0,    0,    0.3,  0,  0.2,  0.2];   // the top of the jump: knees pulled up
+export const FALL_POSE =   [-0.4,   0.2,   0.7,   0.9,  -1.7,  -1.7,  -0.4,  -0.4, -0.5,  0.5,   0,    0,    0,    0.05, 0,  0.6,  0.6];   // arms wide while falling fast
+export const MENU_POSE =   [ 0,     0,     0.05,  0.05,  0,     0,    -0.2,  -0.3, -0.6,  1.15,  1.5,  0,    0.06, 0,    0.03, 0.05, 0.05];   // one hand on his hip, the other out to the sign
 
 // Keyframed toss pose, played across the time he's airborne after an orb hit.
 // Columns: k (0..1 through the toss), then the 12 pose numbers, then head nod and sideways lean.

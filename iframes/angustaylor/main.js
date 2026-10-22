@@ -1,18 +1,27 @@
 // Angus Taylah: Fighting Taxes. Game loop, physics, spawning, UI.
-import { THREE, rand, pick, clamp, damp, loadImage, mesh, blobShadow } from './gfx.js';
-import { LANES, SPAWN_Z, DESPAWN_Z, PHYS, JUMP_V, RUN, BUDGET_AT, BUDGET_SECS, CHARACTERS, BOSS_ORDER, ITEMS, POWER, STREAK_CALLS, PICKUP_POPS, RANKS, OVER_TITLES } from './config.js';
+import { THREE, rand, pick, clamp, damp, loadImage, mesh, blobShadow, canvasTex } from './gfx.js';
+import { LANES, SPAWN_Z, DESPAWN_Z, PHYS, JUMP_V, RUN, BUDGET_AT, BUDGET_SECS, CHARACTERS, BOSS_ORDER, ITEMS, POWER, STREAK_CALLS, PICKUP_POPS, RANKS, OVER_TITLES, BOMB, CAR } from './config.js';
 import { S, W, saveWallet, saveBest, settings, saveSettings, helpSeen, markHelpSeen } from './state.js';
 import * as audio from './audio.js';
-import { buildPerson, applyPose, cyclePose, tossPose, AIR_POSE, FALL_POSE, MENU_POSE } from './person.js';
+import { buildPerson, applyPose, cyclePose, tossPose, AIR_POSE, FALL_POSE, MENU_POSE, LAUNCH_POSE, TUCK_POSE, POSE_N } from './person.js';
 import { createCosmetics } from './cosmetics.js';
 import { createWorld, STAGE } from './world.js';
 import { createFx } from './fx.js';
+import { createExplosion } from './explosion.js';
+import { createCrack } from './crack.js';
 import { createRain } from './rain.js';
 import { createGlass } from './glass.js';
+import { createReflection } from './reflection.js';
+import { createEnvironment } from './env.js';
+import { createCar } from './car.js';
 import { createTicker } from './ticker.js';
+import { World, Body } from './physics.js';
+import { createRagdoll } from './ragdoll.js';
+import { createDebris } from './debris.js';
 
 const $ = (id) => document.getElementById(id);
-const sky = 0x0a2a6e;   // deep blue haze: the whole run is a rally stage
+const DRIVE_POSE = [0, 0, 0.2, 0.2, -1.15, -1.15, -0.55, -0.55, -0.12, 0.12, 0, 0, 0, 0.12, 0, 0, 0];   // both hands on the wheel
+const sky = 0x06142e;   // deep blue haze: the whole run is a rally stage
 
 /* Hazard footprints for hit testing: half width (x), height (y), half depth (z). */
 const HAZ = { tax: { halfW: 0.75, h: 2.0, halfD: 0.45 }, tape: { halfW: 1.1, h: 0.8, halfD: 0.2 } };
@@ -40,11 +49,22 @@ async function boot() {
   scene.background = new THREE.Color(sky);
   scene.fog = new THREE.Fog(sky, 75, 135);   // a light haze only: the far end of the road stays crisp
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 300);
+  createEnvironment(renderer, scene);   // image-based lighting for the glossy things
 
-  scene.add(new THREE.HemisphereLight(0x7fb0ff, 0x1a3a8a, 1.4));
-  const sun = new THREE.DirectionalLight(0xbcd8ff, 2.4);
+  const hemi = new THREE.HemisphereLight(0x3a5fb5, 0x2a1a3a, 1.25);   // its intensity flares for a moment when a tax bomb goes off
+  scene.add(hemi);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;   // glass.js refreshes it once per frame
+  const sun = new THREE.DirectionalLight(0xfff0f2, 2.4);
   sun.position.set(-6, 14, 8);
   sun.target.position.set(0, 0, -6);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -11, right: 11, top: 20, bottom: -20, near: 1, far: 60 });
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.03;
+  sun.shadow.radius = 3;
   scene.add(sun, sun.target);
 
   /* ---------- portraits ---------- */
@@ -58,7 +78,8 @@ async function boot() {
   if (ids.some((id) => !faceImg[id])) console.warn('Some portraits failed to load; using painted faces for them.');
 
   /* ---------- world, people, costumes ---------- */
-  const worldFx = createWorld({ scene, camera });
+  const reflection = createReflection(renderer, scene);
+  const worldFx = createWorld({ scene, camera, reflection });
   const { T } = worldFx;
   for (const id of BOSS_ORDER) { T[id] = buildPerson({ ...CHARACTERS[id], faceImage: faceImg[id] }); T[id].add(blobShadow(0.7, 0.55, 0.4)); }
   const bossHeight = Math.max(...BOSS_ORDER.map((id) => T[id].userData.headTop)) - 0.05;   // top of the head, for hit testing
@@ -69,8 +90,17 @@ async function boot() {
   const playerHead = player.getObjectByName('head');
   const cos = createCosmetics({ scene, player, camera });
   const fx = createFx(scene);
+  const carFx = createCar(scene);
+  const phys = new World();   // rigid bodies: ragdolls and debris. The road is a conveyor under them (see physics.js)
+  phys.gravity.set(0, -18, 0);
+  phys.turbulence = 3;
+  const debris = createDebris(scene, phys);
+  const ragdolls = [];       // everything currently limp: { rag, mesh, t, kind }
+  const boom = createExplosion(scene, fx, phys, debris);
+  const crack = createCrack(scene, fx, phys, debris);
+  let boomGlow = 0;
   const rain = createRain(scene, worldFx.dotTex);
-  const glass = createGlass({ renderer, scene, camera, rain });
+  const glass = createGlass({ renderer, scene, camera, rain, reflection });
   cos.apply();
   const TAPE_AXIS = new THREE.Vector3(0.5, 0.5, 0.7).normalize();   // the thrown tape corkscrews about a diagonal axis
 
@@ -126,10 +156,15 @@ async function boot() {
     setText('streak', S.mult > 1 ? `x${S.mult} streak ${S.streak}` : S.streak > 2 ? `streak ${S.streak}` : '');
     setText('best', `Best ${Math.max(S.best, scoreNow())}`);
     lifeEls.forEach((e, i) => e.classList.toggle('lost', i >= S.lives));
+    setText('bombN', String(W.bombs || 0));
+    setText('carT', fmtT(W.carSecs || 0));
+    $('carBtn').classList.toggle('show', (W.carSecs || 0) > 0 && (S.mode === 'menu' || S.mode === 'playing' || S.mode === 'paused'));
+    $('carBtn').classList.toggle('driving', S.mode === 'menu' ? !!W.carOn : !!S.car);
+    $('bombBtn').classList.toggle('on', S.mode === 'playing' && (W.bombs || 0) > 0);
     const b = S.budgetT > 0 ? Math.ceil(S.budgetT) : 0;
     setText('budget', b ? `LIBERAL BUDGET ${b}s` : '');
     $('budget').style.display = b ? 'block' : 'none';
-    const pw = [S.cutT > 0 ? `✂ RIBBON-CUTTING ${Math.ceil(S.cutT)}s` : '', S.shield > 0 ? '💼 BLAME SHIELD' : ''].filter(Boolean).join('  ·  ');
+    const pw = [S.cutT > 0 ? `✂ RIBBON-CUTTING ${Math.ceil(S.cutT)}s` : '', S.shield > 0 ? `💼 BLAME SHIELD ${Math.ceil(S.shieldT)}s` : ''].filter(Boolean).join('  ·  ');
     setText('powers', pw);
     $('powers').style.display = pw ? 'block' : 'none';
   }
@@ -165,6 +200,572 @@ async function boot() {
     f.classList.add('on');
   }
   const vibrate = (ms) => { if (settings.shake && navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(ms); };   // browsers block it (and log an error) until the player has tapped or pressed a key
+
+  const _sp = new THREE.Vector3();
+  /** A blast at a world position: a ripple races across the screen from where it is, and the picture splits at the edges for a moment. */
+  function shockAt(p, reach = 0.9) {
+    _sp.copy(p).project(camera);
+    glass.shock(_sp.x * 0.5 + 0.5, _sp.y * 0.5 + 0.5, reach);
+    glass.punch(1);
+  }
+
+  /* ---------- the Angus Tax Car ---------- */
+  const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  let carSave = 0;
+  /** climb into (or out of) the car. S.car is the run's state; W.carOn is the standing preference. */
+  function setCar(on, quiet = false) {
+    on = !!on && (W.carSecs || 0) > 0;
+    if (!!S.car === on) return;
+    S.car = on;
+    for (const n of ['legL', 'legR']) { const o = player.getObjectByName(n); if (o) o.visible = !on; }   // his legs are in the footwell
+    carFx.visible = on && S.mode !== 'menu';
+    if (!quiet) {
+      audio.sfx.horn();
+      fx.dust(player.position.x, 0.2, 0, 8, { size: 0.9, spread: 2.2, alpha: 0.3 });
+      popup(on ? 'THE ANGUS TAX CAR!' : 'PARKED', '#7fb2ff');
+      if (on) comic('VROOM!', '#ffd34d');
+    }
+  }
+  function toggleCar() {
+    if ((W.carSecs || 0) <= 0) { popup('Buy the Tax Car in the shop!', '#ffd34d'); audio.sfx.click(); return; }
+    if (S.mode === 'playing') { setCar(!S.car); W.carOn = !!S.car; } else W.carOn = !W.carOn;   // (in the menu it only sets whether the next run starts in the car)
+    saveWallet();
+  }
+  /** a hazard (or a thrown orb) hit by the car is smashed to pieces and thrown forward */
+  function carSmashHazard(kind, m) {
+    crack.shatter(kind, m, new THREE.Vector3(player.position.x, 0.5, m.position.z + 3.4), 1.3);
+    fx.burst(m.position.x, 0.8, m.position.z, 0xffd34d, 14, { speed: 7, up: 4, life: 0.5 });
+    release(m);
+    S.cutScore += CAR.smashScore;
+    S.shake = Math.max(S.shake, 0.45);
+    audio.sfx.crunch();
+    popup(pick(['SMASHED!', 'CRUNCH!', 'FLATTENED!', 'WRECKED!']), '#ffd34d');
+  }
+  /** a boss hit by the car goes off the map: the car's speed goes into him */
+  function carHitBoss(b) {
+    if (b.ragE) return;
+    const e = launchBoss(b, 1.5, new THREE.Vector3(player.position.x, 0.7, b.mesh.position.z + 4));
+    if (!e) return;
+    for (const body of Object.values(e.rag.bodies)) { body.vel.z -= 14; body.vel.y += 3; }
+    S.cutScore += CAR.bossScore;
+    S.shake = Math.max(S.shake, 1.1);
+    S.hitStop = 0.07;
+    S.timeScale = 0.4;
+    S.cine = { e, t: 0 };
+    glass.punch(1);
+    comic(pick(['SEE YA!', 'KABLAM!', 'WHAM!', 'YEET!']), '#ffffff');
+    popup(`OFF THE MAP!  +${CAR.bossScore}`, '#7fb2ff');
+    fx.sparks(b.mesh.position.x, 1.2, b.mesh.position.z, 46, { speed: 14, up: 6, life: 0.9, color: 0xffe0a0, ground: 1 });
+    audio.sfx.crunch();
+    news('boss', true);
+  }
+
+  /* ---------- ragdolls ---------- */
+  const _v = new THREE.Vector3(), _w = new THREE.Vector3();
+  /** Set a person flying. `vel` is relative to the road (so the road's own speed is added), `spin` tumbles them about `axis`. */
+  function throwRagdoll(mesh, vel, spin, axis, kind = 'boss') {
+    const rag = createRagdoll(mesh, phys);
+    rag.start(_v.set(0, 0, 0));   // (the runner's frame: the camera stands still and the road streams past)
+    rag.launch(vel, axis, spin, 7);
+    const entry = { rag, mesh, t: 0, kind };
+    ragdolls.push(entry);
+    return entry;
+  }
+  function endRagdoll(e) {
+    e.rag.stop();
+    const i = ragdolls.indexOf(e);
+    if (i >= 0) ragdolls.splice(i, 1);
+    if (e.kind === 'player') { playerRag = null; resetPerson(player); player.scale.set(1, 1, 1); }
+  }
+  /** Put a ragdolled person's joints back to neutral so a pooled mesh can be reused. */
+  function resetPerson(mesh) {
+    mesh.traverse((o) => { if (o.isGroup && o !== mesh && o.name) o.quaternion.identity(); });
+    mesh.quaternion.identity();
+    mesh.scale.set(mesh.scale.x, mesh.scale.x, mesh.scale.x);
+  }
+  /** The player's own ragdoll (a tax bomb in the face): free-flying and tumbling, with a soft tether to his lane so the run can carry on. */
+  let playerRag = null;
+  function ragdollPlayer({ vel, spin, axis, tether = true, gravityScale = 1.7 }) {
+    if (playerRag) return;
+    const rag = createRagdoll(player, phys, { gravityScale });
+    rag.start(_v.set(0, 0, 0));
+    rag.launch(vel, axis, spin, 5);
+    const e = { rag, mesh: player, t: 0, kind: 'player' };
+    ragdolls.push(e);
+    playerRag = { e, rag, t: 0, tether, blendT: 0, blendDur: 0.32 };
+  }
+  /** pull his pelvis towards his lane (a spring and a damper, sideways and along the road only: up and down is pure physics) */
+  function tetherPlayer(dt) {
+    const pr = playerRag;
+    if (!pr || !pr.tether || pr.rag.released) return;
+    const p = pr.rag.bodies.pelvis;
+    const k = 26, c = 6.5;
+    for (const b of Object.values(pr.rag.bodies)) {
+      b.vel.x += (k * (LANES[S.lane] - p.pos.x) - c * b.vel.x) * dt;
+      b.vel.z += (k * (0 - p.pos.z) - c * b.vel.z) * dt;
+    }
+  }
+  function releasePlayerRag() {
+    const pr = playerRag;
+    if (!pr || pr.rag.released) return;
+    pr.rag.release();   // remembers the limp pose; blend() eases it into the run
+    pr.rag.released = true;
+    pr.blendT = pr.blendDur;
+    const i = ragdolls.indexOf(pr.e);
+    if (i >= 0) ragdolls.splice(i, 1);
+  }
+  /** Blast a boss off the road, away from `origin`: up and away, spinning, limbs flailing; the road drags him when he lands. */
+  function launchBoss(b, power = 1, origin = null) {
+    if (b.ragE) return;
+    const m = b.mesh;
+    const ox = origin ? origin.x : m.position.x, oz = origin ? origin.z : m.position.z + 4;
+    const ax = (m.position.x - ox) * 0.7 + (Math.abs(m.position.x - ox) < 0.5 ? (Math.random() < 0.5 ? -1 : 1) * 1.2 : 0), az = Math.min(-0.3, m.position.z - oz);
+    const len = Math.hypot(ax, az) || 1;
+    const h = rand(14, 22) * power;
+    const vel = new THREE.Vector3((ax / len) * h * 0.55 + (ax < 0 ? -1 : 1) * rand(2, 5) * power, rand(17, 23) * power, (az / len) * h * 1.4 - 4);
+    const axis = new THREE.Vector3(1, 0, -Math.sign(ax) * 0.55).normalize();
+    b.ragE = throwRagdoll(m, vel, rand(5, 8) * power, axis);
+    b.warnT = 0; b.throwing = 0; b.throwT = 99; b.warn.visible = false; b.touched = true; b.passed = true;
+    const label = m.getObjectByName('label');
+    if (label) label.visible = false;
+    return b.ragE;
+  }
+
+  /* ---------- the tax cut bomb ---------- */
+  const bombs = [];   // in flight: { body, mesh, t, T }
+  const bombMats = {
+    shell: new THREE.MeshStandardMaterial({ map: canvasTex(256, 128, (g, w, h) => {
+      g.fillStyle = '#10234d'; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#d4a017'; g.fillRect(0, h * 0.44, w, h * 0.12);
+      g.fillStyle = '#ffffff'; g.font = '900 54px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (const cx of [w * 0.25, w * 0.75]) { g.fillText('%', cx, h * 0.22); g.fillText('TAX', cx, h * 0.78); }
+    }), roughness: 0.28, metalness: 0.65 }),
+    gold: new THREE.MeshStandardMaterial({ color: 0xd4a017, roughness: 0.3, metalness: 0.8 }),
+    fuse: new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.9 }),
+  };
+  const bombGeo = { shell: new THREE.SphereGeometry(0.34, 28, 20), cap: new THREE.CylinderGeometry(0.1, 0.13, 0.12, 14), fuse: new THREE.CylinderGeometry(0.03, 0.03, 0.22, 8) };
+  function makeBombMesh() {
+    const g = new THREE.Group();
+    const shell = new THREE.Mesh(bombGeo.shell, bombMats.shell);
+    const cap = new THREE.Mesh(bombGeo.cap, bombMats.gold); cap.position.y = 0.36;
+    const fuse = new THREE.Mesh(bombGeo.fuse, bombMats.fuse); fuse.position.y = 0.5; fuse.rotation.z = 0.35;
+    g.add(shell, cap, fuse);
+    for (const o of g.children) { o.castShadow = true; }
+    g.userData.tip = new THREE.Vector3(-0.037, 0.61, 0);
+    return g;
+  }
+  const _tip = new THREE.Vector3();
+
+  /** comic sound-effect words (BOOM! HOMERUN!) */
+  function comic(text, color = '#fff') {
+    if (reduceMotion()) return;
+    const el = document.createElement('div');
+    el.className = 'comic';
+    el.textContent = text;
+    el.style.color = color;
+    el.style.setProperty('--r', `${(Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 6)}deg`);
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1000);
+  }
+
+  function useBomb() {
+    if (S.mode !== 'playing' || (W.bombs || 0) < 1 || S.throwing) return;
+    W.bombs -= 1;
+    saveWallet();
+    S.throwing = { t: 0, released: false };
+    popup('TAX CUT BOMB!', '#7fb2ff');
+    audio.sfx.power();
+  }
+
+  /** The bomb leaves his hand on a ballistic arc worked out to meet the nearest boss (or land 26 m up the road). */
+  function releaseBomb(aimPoint = null, fromPoint = null) {
+    let tgt = null;
+    if (!aimPoint) for (const b of world.bosses) {
+      const z = b.mesh.position.z;
+      if (b.ragE || z > -5 || z < -90) continue;
+      if (!tgt || z > tgt.mesh.position.z) tgt = b;
+    }
+    const p0 = fromPoint ? fromPoint.clone() : new THREE.Vector3(player.position.x + 0.7, S.y + 2.3, -0.3);
+    const T = aimPoint ? clamp(p0.distanceTo(aimPoint) / 30, 0.5, 1.1) : tgt ? clamp(-tgt.mesh.position.z / 45, BOMB.aimSecs[0], BOMB.aimSecs[1]) : 0.75;
+    const aim = aimPoint ? aimPoint.clone() : tgt ? tgt.mesh.position.clone().add(new THREE.Vector3(0, 1.4, 0)) : new THREE.Vector3(player.position.x * 0.5, 0.4, -26);
+    aim.z += S.speed * T;   // the road (and so the boss) keeps coming towards us while the bomb is in the air
+    const g = phys.gravity;
+    const v0 = aim.sub(p0).addScaledVector(g, -0.5 * T * T).multiplyScalar(1 / T);
+    const mesh = makeBombMesh();
+    scene.add(mesh);
+    const body = new Body({ type: 'sphere', r: 0.34 }, 3, { restitution: 0.3, friction: 0.5, linDamp: 0, angDamp: 0, noBodyContacts: true });
+    body.pos.copy(p0); body.prevPos.copy(p0);
+    body.vel.copy(v0);
+    body.omega.set(rand(6, 10), 0, rand(-4, 4));
+    body.noSleep = true;
+    body.userData.bomb = true;
+    phys.add(body, mesh);
+    bombs.push({ body, mesh, t: 0, T, fuseT: 0 });
+    audio.sfx.lane();
+  }
+
+  function updateBombs(dt) {
+    for (let i = bombs.length - 1; i >= 0; i--) {
+      const bm = bombs[i], p = bm.body.pos;
+      bm.t += dt;
+      // the fuse: sparks and a thin trail of smoke
+      bm.mesh.updateMatrixWorld(true);
+      _tip.copy(bm.mesh.userData.tip).applyMatrix4(bm.mesh.matrixWorld);
+      fx.emit({ kind: 0, x: _tip.x, y: _tip.y, z: _tip.z, vx: rand(-2, 2) + bm.body.vel.x * 0.2, vy: rand(1, 4), vz: rand(-2, 2) + bm.body.vel.z * 0.2, life: 0.3, size: 0.04, stretch: 0.01, drag: 1, grav: 9, color: 0xffb040, heat: 1, mode: 1, bounce: 0.2 });
+      bm.fuseT -= dt;
+      if (bm.fuseT <= 0) { bm.fuseT = 0.03; fx.emit({ kind: 2, x: bm.body.pos.x, y: bm.body.pos.y, z: bm.body.pos.z, vx: 0, vy: 0.5, vz: 0, life: 0.7, size: 0.22, size1: 0.9, drag: 1.2, grav: 0, color: 0x666a78, alpha: 0.28, turb: 1.5, floor: 0.4 }); }
+      let boom_ = bm.t > bm.T + 0.6 || (p.y < 0.42 && bm.t > 0.15);
+      for (const b of world.bosses) {
+        if (b.ragE || boom_) continue;
+        const m = b.mesh.position;
+        if (Math.hypot(p.x - m.x, (p.y - m.y - 1.4) * 0.7, p.z - m.z) < 1.9) boom_ = true;
+      }
+      if (S.mode === 'sandbox' && !boom_ && bm.t > 0.12) {   // in the sandbox it goes off on touching anything solid
+        for (const o of phys.bodies) {
+          if (o === bm.body || o.userData.bomb || o.invMass === 0) continue;
+          if (o.pos.distanceTo(p) < o.radius * 0.8 + 0.4) { boom_ = true; break; }
+        }
+        if (!boom_ && !playerRag && Math.hypot(p.x, p.z) < 0.8 && p.y < 2.9) boom_ = true;   // the standing Angus
+      }
+      if (boom_) { detonateBomb(bm); bombs.splice(i, 1); }
+    }
+  }
+
+  function detonateBomb(bm) {
+    const p = bm.body.pos.clone();
+    phys.remove(bm.body);
+    scene.remove(bm.mesh);
+    p.y = Math.max(p.y, 1.0);
+    boom.explode(p.x, p.y, p.z, 1.5);
+    boomGlow = 1;
+    shockAt(p, 1.1);
+    if (!reduceMotion()) { const b = $('blast'); b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
+    S.shake = Math.max(S.shake, 1.5);
+    S.hitStop = 0.08;
+    vibrate(200);
+    audio.sfx.explosion();
+    comic('BOOM!', '#ffd34d');
+    S.blast = { x: p.x, y: p.y, z: p.z, r: 0 };
+    if (S.mode === 'sandbox') {   // everything in reach is thrown, Angus included
+      phys.blast(p, 18, 22, 1.0);
+      const d = Math.hypot(p.x, p.z);
+      if (!playerRag && d < 16) {
+        const dir = new THREE.Vector3(-p.x, 0, -p.z);
+        if (dir.lengthSq() < 0.01) dir.set(rand(-1, 1), 0, rand(-1, 1));
+        dir.normalize();
+        const f = 1 - d / 16;
+        knockPlayer(dir.multiplyScalar(5 + 11 * f).add(new THREE.Vector3(0, 8 + 8 * f, 0)), rand(5, 9) * (Math.random() < 0.5 ? -1 : 1));
+      }
+    }
+  }
+
+  /** The blast wave runs down the road with the road. Hazards in it are wrecked; every boss it reaches goes flying. */
+  function updateBlast(dt, move) {
+    const w = S.blast;
+    if (!w) return;
+    w.z += move;
+    w.r += BOMB.waveSpeed * dt;
+    const origin = _v.set(w.x, w.y, w.z);
+    for (const kind of ['hazards', 'shots']) {
+      const list = world[kind];
+      for (let i = list.length - 1; i >= 0; i--) {
+        const e = list[i], m = e.mesh;
+        if (Math.abs(m.position.z - w.z) > w.r) continue;
+        crack.shatter(kind === 'shots' ? 'shot' : e.kind, m, origin.clone(), 1);
+        release(m);
+        list.splice(i, 1);
+      }
+    }
+    for (const b of world.bosses) {
+      if (b.ragE || Math.abs(b.mesh.position.z - w.z) > w.r) continue;
+      const d = Math.hypot(b.mesh.position.x - w.x, b.mesh.position.z - w.z);
+      const power = clamp(1.25 - d / 70, 0.55, 1.25);
+      const e = launchBoss(b, power, origin);
+      S.cutScore += BOMB.bossScore;
+      S.shake = Math.max(S.shake, 1.2);
+      S.timeScale = 0.3;
+      S.cine = { e, t: 0 };
+      comic('HOMERUN!', '#ffffff');
+      popup(`HIT OUT OF THE PARK!  +${BOMB.bossScore}`, '#7fb2ff');
+      fx.sparks(b.mesh.position.x, b.mesh.position.y + 1.5, b.mesh.position.z, 40, { speed: 12, up: 6, life: 0.8, color: 0xffe0a0, ground: 1 });
+      audio.sfx.hit();
+    }
+    if (w.r > BOMB.waveReach) S.blast = null;
+  }
+
+  /** The jump-chain knockout: a giant tax-cut coin flies in from the side and hits the nearest boss; the boss is then a ragdoll that takes the blow. */
+  function updateKO(dt, move) {
+    let k = S.ko;
+    if (!k && S.bossKO) {
+      const b = world.bosses.find((q) => !q.ragE && q.mesh.position.z < -16 && q.mesh.position.z > -60);
+      if (b) {
+        const side = b.mesh.position.x < -0.5 ? 1 : b.mesh.position.x > 0.5 ? -1 : (Math.random() < 0.5 ? -1 : 1);
+        const mesh = acquire(T.taxCut, side * 13, 2.4, b.mesh.position.z);
+        mesh.scale.setScalar(4.2);
+        mesh.rotation.y = Math.PI / 2;
+        k = S.ko = { b, mesh, side, vx: -side * 40 };
+        S.bossKO = false;
+        popup('ROGUE TAX CUT!', '#7fb2ff');
+        audio.sfx.orb();
+      }
+    }
+    if (!k) return;
+    k.mesh.position.x += k.vx * dt;
+    k.mesh.position.z = k.b.mesh.position.z;
+    k.mesh.rotation.x += dt * 9;
+    fx.emit({ kind: 3, x: k.mesh.position.x, y: k.mesh.position.y, z: k.mesh.position.z, vx: 0, vy: 0, vz: 0, ground: 1, life: 0.25, size: 1.6, size1: 0.3, drag: 0, grav: 0, color: 0x2fd27a, alpha: 0.5, glow: 1.6 });
+    const hit = Math.abs(k.mesh.position.x - k.b.mesh.position.x) < 2.1;
+    if (hit && !k.b.ragE) {
+      const b = k.b, side = k.side;
+      const e = launchBoss(b, 0.9, new THREE.Vector3(b.mesh.position.x + side * 3, 1.5, b.mesh.position.z));
+      // the blow is sideways, into the crowd: override the launch with a sideways one
+      if (e) { for (const body of Object.values(e.rag.bodies)) { body.vel.x = -side * rand(24, 30); body.vel.z = -rand(6, 12); } }
+      S.cutScore += BOMB.bossScore;
+      S.shake = Math.max(S.shake, 0.9);
+      S.hitStop = 0.09;
+      S.timeScale = 0.4;
+      S.cine = { e, t: 0 };
+      comic('BONK!', '#7fb2ff');
+      popup(`BOSS KNOCKED INTO THE CROWD!  +${BOMB.bossScore}`, '#7fb2ff');
+      fx.burst(b.mesh.position.x, 1.6, b.mesh.position.z, 0x6dffb0, 30, { speed: 10, up: 5, life: 0.7 });
+      audio.sfx.hit();
+    }
+    if (Math.abs(k.mesh.position.x) > 16 || (hit && k.b.ragE)) { k.mesh.scale.setScalar(1); release(k.mesh); S.ko = null; }
+  }
+
+  function clearBombs() {
+    for (const bm of bombs) { phys.remove(bm.body); scene.remove(bm.mesh); }
+    bombs.length = 0;
+  }
+
+  /* ---------- Ragdoll Mode: a physics playground ---------- */
+  const sb = { tool: 'grab', balls: [], extras: [], grab: null, yaw: 0, pitch: 0.24, dist: 9, slow: false, restT: 0, orbit: null, bossN: 0, rayDir: new THREE.Vector3() };
+  const sbRayCaster = new THREE.Raycaster();
+  const camFollow = new THREE.Vector3(0, 1.3, 0);
+  const ballGeo = new THREE.SphereGeometry(0.3, 28, 20);
+  const ballMats = [0xff3b4a, 0x2f66e0, 0xffd34d, 0x2fd27a, 0xf2f2f2].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.22, metalness: 0.15 }));
+  const bundleGeo = new THREE.BoxGeometry(1.5, 0.4, 0.9);
+  const bundleMat = new THREE.MeshStandardMaterial({ color: 0xf4efe2, roughness: 0.85 });
+  const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c2 = new THREE.Vector3();
+
+  function sbRay(ev) {
+    sbRayCaster.setFromCamera(new THREE.Vector2((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1), camera);
+    return sbRayCaster.ray;
+  }
+  function sbGround(r) { return r.direction.y < -0.02 ? r.at(-r.origin.y / r.direction.y, new THREE.Vector3()) : r.at(14, new THREE.Vector3()); }
+  function sbBodies() {
+    const out = [];
+    if (playerRag && !playerRag.rag.released) out.push(...Object.values(playerRag.rag.bodies));
+    for (const e of sb.extras) out.push(...Object.values(e.rag.bodies));
+    return out;
+  }
+  /** the ragdoll body nearest the ray: forgiving, so clicking near a limb grabs it */
+  function sbPick(r) {
+    let best = null, bScore = 1e9, bt = 0;
+    for (const b of sbBodies()) {
+      _a.copy(b.pos).sub(r.origin);
+      const t = _a.dot(r.direction);
+      if (t < 0) continue;
+      const d = Math.sqrt(Math.max(0, _a.lengthSq() - t * t)), rad = Math.max(0.3, b.radius * 0.9);
+      if (d > rad * 1.3 + 0.35) continue;
+      const score = d - 0.5 * rad;
+      if (score < bScore) { bScore = score; best = b; bt = t; }
+    }
+    return best ? { body: best, t: bt } : null;
+  }
+  function sbOverStanding(r) {
+    if (playerRag) return false;
+    return r.distanceSqToSegment(_a.set(0, 0.3, 0), _b.set(0, 2.6, 0)) < 0.55 * 0.55;
+  }
+  /** Angus is struck: from standing he goes limp (the ragdoll starts from the pose he is in) and is thrown with `vel`. */
+  function knockPlayer(vel, spin = 5, axis = null) {
+    if (playerRag) return;
+    ragdollPlayer({ vel, spin, axis: axis ?? new THREE.Vector3(rand(-1, 1), 0, rand(-1, 1)).normalize(), tether: false, gravityScale: 1.25 });
+    sb.restT = 0;
+    audio.sfx.hit();
+    S.shake = Math.max(S.shake, 0.35);
+  }
+
+  function sbThrowBall(r) {
+    const hit = sbPick(r);
+    const target = hit ? hit.body.pos.clone() : sbOverStanding(r) ? new THREE.Vector3(0, 1.5, 0) : sbGround(r);
+    const pos = camera.position.clone().addScaledVector(r.direction, 1.4).add(new THREE.Vector3(0, -0.6, 0));
+    const body = new Body({ type: 'sphere', r: 0.3 }, 2.5, { restitution: 0.72, friction: 0.5, linDamp: 0.01, angDamp: 0.05 });
+    body.pos.copy(pos); body.prevPos.copy(pos);
+    body.vel.copy(target).sub(pos).normalize().multiplyScalar(36).add(new THREE.Vector3(0, 1.5, 0));
+    body.omega.set(rand(-8, 8), rand(-8, 8), rand(-8, 8));
+    body.noSleep = true;
+    const mesh = new THREE.Mesh(ballGeo, pick(ballMats));
+    mesh.castShadow = true;
+    scene.add(mesh);
+    phys.add(body, mesh);
+    sb.balls.push({ body, mesh });
+    while (sb.balls.length > 24) { const o = sb.balls.shift(); phys.remove(o.body); scene.remove(o.mesh); }
+    audio.sfx.lane();
+  }
+  function sbDropStack(g) {
+    for (let i = 0; i < 4; i++) {
+      debris.spawn({
+        geo: bundleGeo, material: bundleMat, size: [0.75, 0.2, 0.45], mass: 7, restitution: 0.08, friction: 0.7, linDamp: 0.02, angDamp: 0.3, life: 1e9,
+        x: g.x + rand(-0.12, 0.12), y: 7 + i * 0.6, z: g.z + rand(-0.12, 0.12), quat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rand(0, 6.28), 0)), vel: new THREE.Vector3(0, -3, 0),
+      });
+    }
+    audio.sfx.land();
+  }
+  function sbThrowBomb(r) {
+    const hit = sbPick(r);
+    const aim = hit ? hit.body.pos.clone() : sbOverStanding(r) ? new THREE.Vector3(0, 1.4, 0) : sbGround(r);
+    const from = camera.position.clone().add(new THREE.Vector3(0.9, -1.2, 0)).addScaledVector(r.direction, 1.5);
+    releaseBomb(aim, from);
+  }
+  function sbSpawnBoss() {
+    if (sb.extras.length >= 3) { const o = sb.extras.shift(); endRagdoll(o); resetPerson(o.mesh); release(o.mesh); }
+    const kind = BOSS_ORDER[sb.bossN++ % BOSS_ORDER.length];
+    const mesh = acquire(T[kind], rand(-3.2, 3.2), 0, rand(-2.5, 1.5));
+    mesh.rotation.y = rand(-0.8, 0.8);
+    const label = mesh.getObjectByName('label');
+    if (label) label.visible = false;
+    const e = throwRagdoll(mesh, new THREE.Vector3(rand(-2, 2), 5, rand(-2, 2)), rand(2, 5), new THREE.Vector3(rand(-1, 1), 0, rand(-1, 1)).normalize(), kind);
+    e.rag.bodies.pelvis.pos.y += 0.3;
+    sb.extras.push(e);
+    audio.sfx.power();
+  }
+  function sbReset() {
+    sb.grab = null;
+    for (const o of sb.balls) { phys.remove(o.body); scene.remove(o.mesh); }
+    sb.balls.length = 0;
+    debris.clear(); clearBombs(); fx.clear(); boom.clear(); crack.clear();
+    for (const e of sb.extras) { endRagdoll(e); resetPerson(e.mesh); release(e.mesh); }
+    sb.extras.length = 0;
+    if (playerRag && !playerRag.rag.released) { playerRag.blendDur = 0.5; releasePlayerRag(); }   // he gets back on his feet
+    S.blast = null;
+  }
+  function sbCleanup() {
+    sb.grab = null;
+    for (const o of sb.balls) { phys.remove(o.body); scene.remove(o.mesh); }
+    sb.balls.length = 0;
+    for (const e of sb.extras) { endRagdoll(e); resetPerson(e.mesh); release(e.mesh); }
+    sb.extras.length = 0;
+  }
+  const SB_TOOLS = ['grab', 'ball', 'bomb', 'stack', 'boss'];
+  function sbSetTool(t) {
+    if (t === 'boss') { sbSpawnBoss(); return; }
+    sb.tool = t;
+    for (const b of document.querySelectorAll('#sbBar [data-tool]')) b.classList.toggle('on', b.dataset.tool === t);
+    $('sbHint').textContent = ({ grab: 'Grab: drag Angus (or a boss) by any limb and fling him', ball: 'Ball: click to throw a ball at where you aim', bomb: 'Bomb: click to lob a tax cut bomb', stack: 'Tax stack: click to drop a stack of tax papers from above' })[t] + '  ·  right-drag: orbit  ·  wheel: zoom';
+  }
+  function sbToggleSlow() { sb.slow = !sb.slow; $('sbSlow').classList.toggle('on', sb.slow); }
+
+  function startSandbox() {
+    if (S.mode !== 'menu') return;
+    audio.unlock();
+    clearWorld();
+    Object.assign(S, { time: 0, speed: 0, dist: 0, lane: 1, vx: 0, y: 0, vy: 0, onGround: true, airT: 0, fastFalling: false, invuln: 0, shake: 0, hitStop: 0, slow: 1, timeScale: 1, thrown: 0, tapeLeft: 0, noSpin: false, throwing: null, blast: null, cine: null, glance: 0, lives: 99 });
+    player.position.set(0, 0, 0);
+    for (const [x, y, z, hx, hy, hz] of [[-12.5, 10, -10, 0.5, 12, 30], [12.5, 10, -10, 0.5, 12, 30], [0, 10, -40.5, 14, 12, 0.5], [0, 10, 18.5, 14, 12, 0.5]]) {   // invisible walls: nothing leaves the street
+      const wall = new Body({ type: 'box', hx, hy, hz }, 0, { restitution: 0.3, friction: 0.5 });
+      wall.pos.set(x, y, z); wall.prevPos.copy(wall.pos);
+      phys.add(wall);
+    }
+    show('menu', false);
+    sb.yaw = 0; sb.pitch = 0.24; sb.dist = 9; sb.slow = false; sb.bossN = 0;
+    $('sbSlow').classList.remove('on');
+    sbSetTool('grab');
+    setMode('sandbox');
+    audio.music.stop();
+    camFollow.set(0, 1.3, 0);
+  }
+
+  /** every step of the sandbox: the grab spring, the standing Angus being struck, getting back up */
+  function updateSandbox(dt) {
+    if (!playerRag) {   // anything fast that reaches him knocks him down
+      for (const b of phys.bodies) {
+        if (b.invMass === 0 || b.userData.seg || b.userData.bomb) continue;
+        const sp = b.vel.length();
+        if (sp < 4 || b.pos.y > 3.4 || b.pos.y < -0.2) continue;
+        if (Math.hypot(b.pos.x, b.pos.z) < 0.62 + b.radius * 0.7) {
+          const k = clamp(b.mass / (b.mass + 12), 0.1, 0.9);
+          _c2.copy(b.vel).multiplyScalar(0.55 * k + 0.25);
+          _c2.y += 2.5;
+          knockPlayer(_c2.clone(), sp * 0.35 * (Math.random() < 0.5 ? -1 : 1));
+          b.vel.multiplyScalar(-0.25);
+          break;
+        }
+      }
+    } else if (!playerRag.rag.released) {   // when he has been lying still a moment, he gets back up
+      const calm = playerRag.rag.avgVel(_a).length() < 1.1 && !sb.grab;
+      sb.restT = calm ? sb.restT + dt : 0;
+      if (sb.restT > 3) { playerRag.blendDur = 0.7; releasePlayerRag(); sb.restT = 0; }
+    }
+    const g = sb.grab;   // the grab: a soft spring pulls the held point towards the pointer
+    if (g) {
+      _b.copy(camera.position).addScaledVector(sb.rayDir, g.depth);
+      g.body.toWorld(g.local, _a);
+      _c2.copy(_b).sub(_a).multiplyScalar(14);
+      if (_c2.length() > 36) _c2.setLength(36);
+      g.body.pointVel(_a.clone().sub(g.body.pos), _b);
+      _c2.sub(_b).multiplyScalar(g.body.mass * (1 - Math.exp(-12 * dt)));
+      phys.impulseAt(g.body, _c2, _a);
+      g.body.vel.multiplyScalar(Math.exp(-0.9 * dt));
+    }
+  }
+
+  function sbPointerDown(ev) {
+    if (ev.target.closest && ev.target.closest('#sbBar')) return;
+    if (ev.button === 2 || ev.button === 1 || ev.shiftKey) { sb.orbit = { x: ev.clientX, y: ev.clientY }; return; }
+    const r = sbRay(ev);
+    sb.rayDir.copy(r.direction);
+    if (sb.tool === 'grab') {
+      let hit = sbPick(r);
+      if (!hit && sbOverStanding(r)) { knockPlayer(new THREE.Vector3(0, 1.5, 0), 0); hit = sbPick(r); }
+      if (hit) {
+        const b = hit.body;
+        _a.copy(r.origin).addScaledVector(r.direction, hit.t);   // the point on the ray nearest the body
+        sb.grab = { body: b, local: b.pos.clone().sub(b.pos).add(_a.clone().sub(b.pos).applyQuaternion(b.quat.clone().invert())), depth: hit.t };
+        sb.restT = 0;
+      }
+    } else if (sb.tool === 'ball') sbThrowBall(r);
+    else if (sb.tool === 'bomb') sbThrowBomb(r);
+    else if (sb.tool === 'stack') sbDropStack(sbGround(r));
+  }
+  function sbPointerMove(ev) {
+    if (sb.orbit) {
+      sb.yaw -= (ev.clientX - sb.orbit.x) * 0.006;
+      sb.pitch = clamp(sb.pitch + (ev.clientY - sb.orbit.y) * 0.005, -0.1, 1.2);
+      sb.orbit.x = ev.clientX; sb.orbit.y = ev.clientY;
+    }
+    if (sb.grab) sb.rayDir.copy(sbRay(ev).direction);
+  }
+  function sbPointerUp() { sb.grab = null; sb.orbit = null; }
+  addEventListener('pointerdown', (e) => { if (S.mode === 'sandbox') sbPointerDown(e); });
+  addEventListener('pointermove', (e) => { if (S.mode === 'sandbox') sbPointerMove(e); });
+  addEventListener('pointerup', () => { if (S.mode === 'sandbox') sbPointerUp(); });
+  addEventListener('pointercancel', () => { if (S.mode === 'sandbox') sbPointerUp(); });
+  addEventListener('contextmenu', (e) => { if (S.mode === 'sandbox') e.preventDefault(); });
+  addEventListener('wheel', (e) => { if (S.mode === 'sandbox') { sb.dist = clamp(sb.dist * (1 + e.deltaY * 0.001), 4, 24); e.preventDefault(); } }, { passive: false });
+
+  function sandboxCamera(dt) {
+    const lead = playerRag && !playerRag.rag.released ? playerRag.rag.centre : null;
+    _look.set(0, 1.3, 0);
+    if (lead) _look.lerp(lead, 0.7);
+    camFollow.lerp(_look, 1 - Math.exp(-3 * dt));
+    const cp = Math.cos(sb.pitch), tt = performance.now() / 1000, amp = reduceMotion() ? 0 : S.shake * S.shake * 0.5 + S.shake * 0.12;
+    const nz = (f, s) => Math.sin(tt * f + s) * 0.6 + Math.sin(tt * f * 2.37 + s * 1.9) * 0.4;
+    camera.position.set(camFollow.x + Math.sin(sb.yaw) * cp * sb.dist + nz(31, 1) * amp * 0.5, Math.max(0.6, camFollow.y + Math.sin(sb.pitch) * sb.dist + 0.5) + nz(37, 2) * amp * 0.35, camFollow.z + Math.cos(sb.yaw) * cp * sb.dist);
+    camera.lookAt(camFollow.x, camFollow.y * 0.85 + 0.35, camFollow.z);
+    camera.rotateZ(nz(23, 4) * amp * 0.03);
+    S.shake *= Math.exp(-8 * dt);
+    const base = innerWidth / innerHeight < 0.9 ? 78 : 62;
+    if (Math.abs(camera.fov - base) > 0.01) { camera.fov = base; camera.updateProjectionMatrix(); }
+  }
+
+  function stepRagdolls(dt) {
+    for (let i = ragdolls.length - 1; i >= 0; i--) {
+      const e = ragdolls[i];
+      e.t += dt;
+      e.rag.apply();
+    }
+  }
 
   /* ---------- spawning ---------- */
   const laneX = (lane) => LANES[lane];
@@ -235,7 +836,7 @@ async function boot() {
   function spawnRow() {
     const d = clamp(S.time / 90, 0, 1);
     const bossNear = world.bosses.some((b) => b.mesh.position.z > SPAWN_Z + 8 && b.mesh.position.z < 3);
-    const pool = PATTERNS.filter((p) => !bossNear || p.safe);   // while a boss is on the road, only pickups: the boss is the obstacle
+    const pool = PATTERNS.filter((p) => !bossNear || p.safe || S.car);   // while a boss is on the road, only pickups: the boss is the obstacle
     let total = 0;
     const ws = pool.map((p) => (total += Math.max(0, p.w(d)), total));
     const r = Math.random() * total;
@@ -260,10 +861,10 @@ async function boot() {
   }
 
   /** A gentle toss: the tape tugs him into a neighbouring lane and lofts him in a smooth backflip. Controls lock for under half a second. */
-  function tapeThrow() {
+  function tapeThrow(withTape = true) {
     if (S.mode !== 'playing' && S.mode !== 'dying') return;
     S.thrown = 0.45;
-    S.tapeLeft = 1.1;
+    S.tapeLeft = withTape ? 1.1 : 0;
     const dir = S.lane === 0 ? 1 : S.lane === 2 ? -1 : Math.random() < 0.5 ? -1 : 1;
     S.lane = clamp(S.lane + dir, 0, 2);
     S.throwDir = dir;
@@ -273,22 +874,24 @@ async function boot() {
     S.onGround = false;
     S.fastFalling = false;
     S.noSpin = true;   // no turn-to-camera spin during a toss
-    audio.sfx.tape();
+    if (withTape) audio.sfx.tape();
   }
 
+  const AIR_MIX = new Array(POSE_N).fill(0);   // scratch pose for blending the jump poses
   const CAUSES = {
-    tax: 'Crushed by a tax stack',
+    tax: 'Blown up by a tax bomb',
     tape: 'Tangled in red tape',
     boss: (by) => `Ran into ${CHARACTERS[by]?.name ?? 'the Government'}`,
     shot: (by) => `Wrapped in ${CHARACTERS[by]?.name ?? 'the Government'}'s red tape`,
   };
 
   function hurt(cause = 'tape', by = '') {
+    if (S.car) return false;   // nothing hurts him in the car
     if (S.invuln > 0 || S.mode !== 'playing') return false;
-    if (S.shield > 0) {   // the consultant takes the blame instead
-      S.shield = 0; S.invuln = 1.0; S.shake = Math.max(S.shake, 0.4);
-      fx.burst(player.position.x, S.y + 1.5, 0, 0x7fb2ff, 22, { speed: 5, up: 3, life: 0.6 });
-      popup('CONSULTANT TAKES THE BLAME!', '#7fb2ff');
+    if (S.shield > 0) {   // a boss can't be cracked open: his touch pops the shield instead (everything else the shield just breaks)
+      S.shield = 0; S.shieldT = 0; S.invuln = 1.0; S.shake = Math.max(S.shake, 0.4);
+      fx.burst(player.position.x, S.y + 1.5, 0, 0x1f4fb8, 22, { speed: 5, up: 3, life: 0.6 });
+      popup('CONSULTANT TAKES THE BLAME!', '#3a6fe0');
       news('blame', true);
       audio.sfx.blame();
       return false;
@@ -303,6 +906,8 @@ async function boot() {
     S.hitBy = typeof CAUSES[cause] === 'function' ? CAUSES[cause](by) : CAUSES[cause];
     S.hitById = by;
     fx.hit(player.position.x, S.y + 1.3, 0);
+    glass.punch(0.8);
+    comic(pick(['WHAM!', 'BONK!', 'THUD!', 'OOF!']), '#ff8a8a');
     flash();
     vibrate(120);
     audio.sfx.hit();
@@ -312,10 +917,35 @@ async function boot() {
     return true;
   }
 
+  /** The tax bomb: a stack of tax papers goes off under him. */
+  function detonate(m) {
+    boom.explode(m.position.x, 1.0, m.position.z - 1.4, 0.6);   // a little ahead of him, so the blast is on screen as he runs into it
+    shockAt(_v.set(m.position.x, 1.0, m.position.z - 1.4));
+    boomGlow = 1;
+    if (!reduceMotion()) { const b = $('blast'); b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
+    S.shake = Math.max(S.shake, 1.7);
+    S.hitStop = 0.1;
+    S.slow = 0.5;   // the blast knocks the wind out of the run
+    vibrate(220);
+    audio.sfx.explosion();
+    popup('TAX BOMB!', '#ffb347');
+  }
+  /** With the blame shield up, whatever he runs into cracks open (crack.js takes over `m` and releases it when it breaks). */
+  function crackOpen(kind, m) {
+    crack.open(kind, m, release);
+    cos.shieldPulse();
+    fx.burst(m.position.x, m.position.y + 1.0, m.position.z, 0x2a5cc8, 20, { speed: 6, up: 4, life: 0.6 });
+    S.cutScore += POWER.crackBonus;
+    S.shake = Math.max(S.shake, 0.45);
+    popup(pick(['CRACKED OPEN!', 'SHATTERED!', 'SMASHED!']), '#3a6fe0');
+    audio.sfx.crack();
+  }
+
   /* Hit testing uses real boxes. z is swept from where the object was last step to where it is now, so nothing tunnels at speed. */
   function collide() {
-    const px = player.position.x, hw = PHYS.playerHalfW, hd = PHYS.playerHalfD;
-    const y0 = S.y, y1 = S.y + PHYS.playerHeight;
+    const car = !!S.car;   // in the car he is much bigger, and everything he touches is smashed
+    const px = player.position.x, hw = car ? 0.95 : PHYS.playerHalfW, hd = car ? 1.5 : PHYS.playerHalfD;
+    const y0 = S.y, y1 = S.y + (car ? 1.2 : PHYS.playerHeight);
     const hits = (x, ya, yb, z, pz, halfW, halfD) =>
       Math.abs(px - x) < halfW + hw && y0 < yb && y1 > ya &&
       Math.max(z, pz) + halfD > -hd && Math.min(z, pz) - halfD < hd;
@@ -323,18 +953,35 @@ async function boot() {
     for (let i = world.hazards.length - 1; i >= 0; i--) {
       const h = world.hazards[i], f = HAZ[h.kind], m = h.mesh;
       if (!hits(m.position.x, 0, f.h, m.position.z, h.pz, f.halfW, f.halfD)) continue;
-      if (S.cutT > 0) {   // the ceremonial scissors cut straight through it
+      if (car) {
+        world.hazards.splice(i, 1);
+        carSmashHazard(h.kind, m);
+      } else if (S.shieldT > 0) {   // the blame shield cracks it open
+        world.hazards.splice(i, 1);
+        crackOpen(h.kind, m);
+      } else if (S.cutT > 0) {   // the ceremonial scissors cut straight through it
         fx.burst(m.position.x, 1.0, m.position.z, 0xff6a73, 16, { speed: 5, up: 3, life: 0.6 });
         release(m);
         world.hazards.splice(i, 1);
         S.cutScore += POWER.scissorsBonus;
         popup(pick(['SNIP!', 'RIBBON CUT!', 'CUT THROUGH!']), '#ff6a73');
         audio.sfx.snip();
+      } else if (h.kind === 'tax') {   // a tax stack goes off in his face
+        if (hurt('tax')) {
+          world.hazards.splice(i, 1);
+          const dying = S.mode === 'dying';
+          tapeThrow(false);   // (the run's own state: he changes lane and hops, so the game carries on in step with the ragdoll)
+          detonate(m);
+          release(m);
+          const side = S.throwDir || 1;
+          ragdollPlayer({ vel: new THREE.Vector3(side * rand(3, 5), dying ? rand(12, 14) : rand(9, 10.5), rand(2, 5)), spin: rand(6, 9) * (Math.random() < 0.5 ? -1 : 1), axis: new THREE.Vector3(1, 0, 0.3).normalize(), tether: !dying, gravityScale: dying ? 1 : 1.7 });
+        }
       } else hurt(h.kind);
     }
     for (const b of world.bosses) {
       const m = b.mesh;
-      if (hits(m.position.x, 0, bossHeight, m.position.z, b.pz, 0.5, 0.32)) { b.touched = true; hurt('boss', b.kind); }
+      if (b.ragE) continue;
+      if (hits(m.position.x, 0, bossHeight, m.position.z, b.pz, 0.5, 0.32)) { if (car) carHitBoss(b); else { b.touched = true; hurt('boss', b.kind); } }
       if (!b.passed && m.position.z > 1.2) {   // got past a boss without touching him
         b.passed = true;
         if (S.mode === 'playing' && !b.touched) { S.cutScore += 50; popup('DODGED! +50', '#ffd34d'); }
@@ -343,9 +990,10 @@ async function boot() {
     for (let i = world.shots.length - 1; i >= 0; i--) {
       const sh = world.shots[i], m = sh.mesh;
       if (hits(m.position.x, 0.75, 1.55, m.position.z, sh.pz, 0.25, 0.4)) {
-        release(m);
         world.shots.splice(i, 1);
-        if (hurt('shot', sh.from)) tapeThrow();
+        if (car) carSmashHazard('shot', m);
+        else if (S.shieldT > 0) crackOpen('shot', m);
+        else { release(m); if (hurt('shot', sh.from)) tapeThrow(); }
       }
     }
     for (let i = world.taxCuts.length - 1; i >= 0; i--) {
@@ -368,10 +1016,10 @@ async function boot() {
 
   function collectPowerup(kind) {
     S.glance = 0.7;
-    fx.burst(player.position.x, S.y + 1.5, 0, kind === 'scissors' ? 0xff6a73 : 0x7fb2ff, 22, { speed: 5, up: 3, life: 0.7 });
+    fx.burst(player.position.x, S.y + 1.5, 0, kind === 'scissors' ? 0xff6a73 : 0x1f4fb8, 22, { speed: 5, up: 3, life: 0.7 });
     audio.sfx.power();
     if (kind === 'scissors') { S.cutT = POWER.scissorsSecs; popup('RIBBON-CUTTING CEREMONY!', '#ff6a73'); news('scissors', true); }
-    else { S.shield = 1; popup('CONSULTANT HIRED!', '#7fb2ff'); news('consultant', true); }
+    else { S.shieldT = POWER.shieldSecs; S.shield = 1; popup('BLAME SHIELD UP!', '#3a6fe0'); news('consultant', true); }
   }
 
   function collectTaxCut(m, gold = false) {
@@ -387,7 +1035,7 @@ async function boot() {
     W.coins += val;
     if (Math.floor(before / 5) !== Math.floor(S.taxCuts / 5)) saveWallet();
     for (const ms of [1, 10, 25, 50, 100, 150]) if (before < ms && S.taxCuts >= ms) news('tc' + ms, true);
-    if (before < BUDGET_AT && S.taxCuts >= BUDGET_AT) { S.budgetT = BUDGET_SECS; popup('LIBERAL BUDGET!', '#7fb2ff'); audio.sfx.budget(); news('budget', true); }
+    if (before < BUDGET_AT && S.taxCuts >= BUDGET_AT) { S.budgetT = BUDGET_SECS; popup('LIBERAL BUDGET!', '#3a6fe0'); audio.sfx.budget(); news('budget', true); }
     const call = STREAK_CALLS[S.streak];
     if (call) { popup(call, '#ffd34d'); news('streak', true); audio.sfx.fanfare(); }
     else if (gold) { popup('SURPLUS FOUND! +10', '#ffd34d'); news('gold', true); audio.sfx.gold(); }
@@ -398,8 +1046,9 @@ async function boot() {
     for (const k in world) {
       const list = world[k];
       for (let i = list.length - 1; i >= 0; i--) {
-        if (list[i].mesh.position.z > DESPAWN_Z) {
+        if (list[i].mesh.position.z > DESPAWN_Z || (list[i].ragE && (list[i].ragE.t > 4.5 || list[i].mesh.position.z < -150))) {
           if (list[i].warn) scene.remove(list[i].warn);
+          if (list[i].ragE) { endRagdoll(list[i].ragE); resetPerson(list[i].mesh); }
           release(list[i].mesh);
           list.splice(i, 1);
         }
@@ -408,11 +1057,24 @@ async function boot() {
   }
 
   function clearWorld() {
+    sbCleanup();
+    if (S.car) setCar(false, true);
+    carFx.visible = false;
     for (const k in world) {
-      for (const e of world[k]) { if (e.warn) scene.remove(e.warn); release(e.mesh); }
+      for (const e of world[k]) { if (e.warn) scene.remove(e.warn); if (e.ragE) { endRagdoll(e.ragE); resetPerson(e.mesh); } release(e.mesh); }
       world[k].length = 0;
     }
+    for (const e of [...ragdolls]) endRagdoll(e);
+    clearBombs();
+    if (S.ko) { S.ko.mesh.scale.setScalar(1); release(S.ko.mesh); S.ko = null; }
+    S.bossKO = false;
+    S.blast = null; S.throwing = null; S.cine = null;
+    debris.clear();
+    phys.clear();
     fx.clear();
+    crack.clear();
+    boom.clear();
+    boomGlow = 0;
     $('fx').replaceChildren();
     popCount = 0;
   }
@@ -425,7 +1087,9 @@ async function boot() {
     worldFx.stageMode(mode === 'menu');
     cos.resetCape();   // the player moves between the stage and the road
     $('pauseBtn').style.display = mode === 'playing' ? 'block' : 'none';
-    $('hud').style.display = mode === 'menu' || mode === 'loading' ? 'none' : 'flex';
+    $('hud').style.display = mode === 'menu' || mode === 'loading' || mode === 'sandbox' ? 'none' : 'flex';
+    $('sbBar').classList.toggle('hidden', mode !== 'sandbox');
+    $('sbHint').classList.toggle('hidden', mode !== 'sandbox');
     document.body.dataset.mode = mode;
     if (mode === 'menu') { audio.music.setIntensity(0.35); audio.music.setTempo(0); }
   }
@@ -437,9 +1101,12 @@ async function boot() {
     Object.assign(S, {
       time: 0, speed: RUN.startSpeed, dist: 0, taxCuts: 0, cutScore: 0, streak: 0, bestStreak: 0, mult: 1, lives: 3,
       lane: 1, vx: 0, y: 0, vy: 0, onGround: true, airT: 0, fastFalling: false, invuln: 1.0, shake: 0, hitStop: 0, slow: 1,
-      rowDist: 22, sceneryDist: 0, nextBossDist: 180, bossCount: 0, thrown: 0, tapeLeft: 0, noSpin: false, budgetT: 0, cutT: 0, shield: 0,
-      jumpBufferT: 0, laneBuffer: 0, laneBufferDir: 0, hitBy: '', hitById: '', newBest: false, dyingT: 0, apex: 0,
+      rowDist: 22, sceneryDist: 0, nextBossDist: 180, bossCount: 0, thrown: 0, tapeLeft: 0, noSpin: false, budgetT: 0, cutT: 0, shield: 0, shieldT: 0,
+      jumpBufferT: 0, laneBuffer: 0, laneBufferDir: 0, hitBy: '', hitById: '', newBest: false, dyingT: 0, apex: 0, throwing: null, blast: null, timeScale: 1, cine: null, jumpCount: 0, chain: 0, bossKO: false, ko: null, sinceLand: 99,
     });
+    if ((W.bombs || 0) < BOMB.freePerRun) { W.bombs = BOMB.freePerRun; saveWallet(); }   // a complimentary bomb every run
+    S.car = false;
+    setCar(W.carOn && (W.carSecs || 0) > 0, true);   // he starts in the car if he left it on
     player.position.set(0, 0, 0);
     show('menu', false);
     show('over', false);
@@ -523,6 +1190,12 @@ async function boot() {
     S.apex = 0;
     S.onGround = false;
     S.fastFalling = false;
+    S.chain = (S.sinceLand ?? 99) < 1 && (S.chain || 0) > 0 ? S.chain + 1 : 1;   // jumps in quick succession build a chain
+    S.sinceLand = 0;
+    if (S.chain >= 2) { popup(`JUMP CHAIN x${S.chain}`, S.chain >= 5 ? '#ff6b6b' : '#7fb2ff'); S.cutScore += 5 * S.chain; }
+    S.jumpCount = (S.jumpCount || 0) + 1;
+    if (S.jumpCount >= 10) { S.jumpCount = 0; S.bossKO = true; popup('10 JUMPS!  BOSS KNOCKOUT!', '#ff6b6b'); audio.sfx.fanfare(); }
+    fx.dust(player.position.x, 0.1, 0, 4, { size: 0.5, spread: 1.4, alpha: 0.2, up: 0.4 });   // the push-off kicks up spray
     audio.sfx.jump();
     $('hint').classList.remove('show');
     if (Math.random() < 0.3) news('jump');
@@ -558,6 +1231,7 @@ async function boot() {
     onFirstGesture();
     if (k === 'm') { settings.sfx = settings.music = !(settings.sfx || settings.music); applySettings(); return; }
     const inOverlay = e.target.closest?.('button, input');
+    if (k === 'c' && (S.mode === 'menu' || S.mode === 'playing')) { toggleCar(); return; }
     if (S.mode === 'menu') { if (!inOverlay && primaryKeys.includes(k)) startGame(); return; }
     if (S.mode === 'over') {
       if (!inOverlay && primaryKeys.includes(k) && performance.now() - S.overAt > 700) startGame();
@@ -567,11 +1241,24 @@ async function boot() {
       if (k === 'p' || k === 'escape' || (!inOverlay && primaryKeys.includes(k))) resumeGame();
       return;
     }
+    if (S.mode === 'sandbox') {
+      if (k === 'escape') backToMenu();
+      else if (k === 'r') sbReset();
+      else if (k === 't') sbToggleSlow();
+      else if (k >= '1' && k <= '5') sbSetTool(SB_TOOLS[Number(k) - 1]);
+      else if (k === 'b') sbSetTool('bomb');
+      else if (k === 'arrowleft') sb.yaw += 0.12;
+      else if (k === 'arrowright') sb.yaw -= 0.12;
+      else if (k === 'arrowup') sb.pitch = clamp(sb.pitch + 0.08, -0.1, 1.2);
+      else if (k === 'arrowdown') sb.pitch = clamp(sb.pitch - 0.08, -0.1, 1.2);
+      return;
+    }
     if (S.mode !== 'playing') return;
     if (k === 'arrowleft' || k === 'a') changeLane(-1);
     else if (k === 'arrowright' || k === 'd') changeLane(1);
     else if (k === 'arrowup' || k === 'w' || k === ' ') jump();
     else if (k === 'arrowdown' || k === 's') fastFall();
+    else if (k === 'b') useBomb();
     else if (k === 'p' || k === 'escape') pauseGame();
   });
 
@@ -595,13 +1282,20 @@ async function boot() {
   addEventListener('pointercancel', endTouch);
 
   // UI buttons stop their pointer events reaching the swipe handler above.
-  for (const id of ['pauseBtn', 'muteBtn']) {
+  for (const id of ['pauseBtn', 'muteBtn', 'bombBtn', 'carBtn']) {
     $(id).addEventListener('pointerdown', (e) => e.stopPropagation());
     $(id).addEventListener('pointerup', (e) => e.stopPropagation());
   }
   const press = (id, fn) => $(id).addEventListener('click', (e) => { e.currentTarget.blur(); audio.unlock(); audio.sfx.click(); fn(e); });
 
   press('pauseBtn', pauseGame);
+  press('bombBtn', () => useBomb());
+  press('carBtn', toggleCar);
+  press('sandboxBtn', startSandbox);
+  for (const b of document.querySelectorAll('#sbBar [data-tool]')) b.addEventListener('click', (e) => { e.currentTarget.blur(); sbSetTool(e.currentTarget.dataset.tool); });
+  press('sbReset', sbReset);
+  press('sbSlow', sbToggleSlow);
+  press('sbMenu', () => backToMenu());
   press('startBtn', startGame);
   press('againBtn', startGame);
   press('resumeBtn', resumeGame);
@@ -610,6 +1304,7 @@ async function boot() {
   press('muteBtn', () => { settings.sfx = settings.music = !(settings.sfx || settings.music); applySettings(); });
 
   function backToMenu() {
+    clearWorld();
     player.position.set(0, 0, 0);
     Object.assign(S, { lane: 1, y: 0, vy: 0, onGround: true, vx: 0, thrown: 0, tapeLeft: 0, invuln: 0, glance: 0, noSpin: false, recover: 0, fastFalling: false });
     show('menu', true);
@@ -630,8 +1325,23 @@ async function boot() {
       const row = document.createElement('div');
       row.className = 'row';
       const label = document.createElement('span');
-      label.textContent = it.name;
+      const isCar = it.id === 'car', have = isCar ? W.carSecs || 0 : W.bombs || 0;
+      label.textContent = it.consumable ? `${it.name} (you have ${isCar ? fmtT(have) : have})` : it.name;
       const btn = document.createElement('button');
+      if (it.consumable) {   // the bomb: buy up to BOMB.max
+        const full = isCar ? have >= CAR.maxSecs : have >= BOMB.max;
+        btn.textContent = full ? 'Full' : `Buy ${it.price}`;
+        btn.disabled = full || W.coins < it.price;
+        btn.onclick = () => {
+          audio.unlock();
+          W.coins -= it.price;
+          if (isCar) W.carSecs = Math.min(CAR.maxSecs, (W.carSecs || 0) + CAR.secs); else W.bombs = (W.bombs || 0) + 1;
+          audio.sfx.buy(); saveWallet(); renderShop();
+        };
+        row.append(label, btn);
+        list.appendChild(row);
+        continue;
+      }
       btn.textContent = W.owned[it.id] ? (W.equipped[it.id] ? 'Unequip' : 'Equip') : `Buy ${it.price}`;
       btn.disabled = !W.owned[it.id] && W.coins < it.price;
       btn.onclick = () => {
@@ -668,11 +1378,13 @@ async function boot() {
     $('optShake').checked = settings.shake;
     $('optGlass').checked = settings.glass;
     $('optRain').checked = settings.rain;
+    $('optQuality').value = settings.quality || 'auto';
     $('muteBtn').textContent = settings.sfx || settings.music ? '🔊' : '🔇';
     $('muteBtn').setAttribute('aria-label', settings.sfx || settings.music ? 'Mute' : 'Unmute');
     document.body.classList.toggle('calm', !settings.shake);
     saveSettings();
   }
+  $('optQuality').addEventListener('change', (e) => { settings.quality = e.target.value; saveSettings(); location.reload(); });   // (re-reads the setting: the render budget is chosen at start-up)
   for (const [id, key] of [['optSfx', 'sfx'], ['optMusic', 'music'], ['optShake', 'shake'], ['optGlass', 'glass'], ['optRain', 'rain']]) $(id).addEventListener('change', (e) => { settings[key] = e.target.checked; applySettings(); });
   const openSettings = (from) => () => { settingsFrom = from; show(from, false); show('settings', true); $('settingsClose').focus({ preventScroll: true }); };
   press('settingsBtn', openSettings('menu'));
@@ -686,7 +1398,8 @@ async function boot() {
     // The body runs away from the camera; the head turns back over the shoulder on pickups and hits,
     // and faces the camera on the pause and game-over screens.
     const glancing = (S.mode === 'paused' || S.mode === 'over' || S.glance > 0) && S.onGround;
-    playerHead.rotation.y = damp(playerHead.rotation.y, glancing ? Math.PI * 0.92 : 0, 12, dt);
+    const sp = S.pose;   // last frame's pose: the head counter-rotates against the chest so he keeps looking down the road
+    playerHead.rotation.y = damp(playerHead.rotation.y, glancing ? Math.PI * 0.92 : sp ? -sp[12] * 0.8 : 0, 12, dt);
     S.glance = Math.max(0, S.glance - dt);
 
     // Mid-jump he turns round to face the camera and back again. Progress follows his height (up, then down),
@@ -703,7 +1416,8 @@ async function boot() {
     S.settle = Math.max(0, S.settle - dt);
     player.rotation.x = 0;
     player.rotation.z = 0;
-    playerHead.rotation.x = Math.sin(S.runT * 2) * (playing && S.onGround ? 0.04 : 0);
+    playerHead.rotation.x = (sp ? -sp[13] * 0.75 : 0) + Math.sin(S.runT * 2) * (playing && S.onGround ? 0.03 : 0);
+    playerHead.rotation.z = sp ? -sp[14] * 0.8 : 0;
     if (S.mode !== 'playing' && S.mode !== 'dying') { S.thrown = 0; S.tapeLeft = 0; }
     S.thrown = Math.max(0, S.thrown - dt);
     S.tapeLeft = Math.max(0, S.tapeLeft - dt);
@@ -716,7 +1430,7 @@ async function boot() {
     if (tossing) {   // the toss: yank, tuck, flip, open out
       const k = Math.min(1, S.airT / (S.throwAir || 1));
       const p = tossPose(k);
-      tgt = p.slice(1, 13); rate = 12;
+      tgt = p.slice(1, 13).concat([0, 0.2, 0, 0.3, 0.3]); rate = 12;
       playerHead.rotation.x = p[13];
       player.rotation.z = S.throwDir * p[14];
       const f = clamp((k - 0.12) / 0.73, 0, 1);   // the flip starts after the yank and finishes before landing
@@ -727,14 +1441,23 @@ async function boot() {
       player.position.y += Math.abs(s) * 0.4;
       player.rotation.z = s * 0.12 + lean;
       player.rotation.x = playing ? -0.1 : 0;
-      tgt = new Array(12).fill(0);
+      tgt = new Array(POSE_N).fill(0);
     } else if (S.onGround) {
       if (playing) S.runT += dt * S.speed * 0.6;
-      tgt = cyclePose(S.runT, playing ? 1 : 0);
+      const gait = 0.92 + 0.2 * clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1);   // longer strides and harder arm drive as he speeds up
+      tgt = cyclePose(S.runT, playing ? gait : 0);
       rate = playing ? (S.settle > 0 ? 12 : 40) : 10;
-      if (playing) { player.position.y += Math.abs(Math.sin(S.runT)) * 0.06; player.rotation.x = -0.08; player.rotation.z = lean; }   // a little bounce and a forward lean
+      if (playing) { player.position.y += Math.abs(Math.sin(S.runT)) * 0.085; player.rotation.x = -0.05; player.rotation.z = lean + Math.sin(S.runT) * 0.025; }   // a bounce on every stride, a little forward lean and hip sway
     } else {
-      tgt = S.fastFalling ? FALL_POSE : AIR_POSE; rate = 12;
+      const launching = S.airT < 0.14 && S.vy > 0;   // the push-off: pushed up tall, toes pointed
+      if (S.fastFalling) tgt = FALL_POSE;
+      else if (launching) tgt = LAUNCH_POSE;
+      else {   // he pulls his knees up as he tops out, and reaches out for the landing as he falls
+        const w = clamp(1 - Math.abs(S.vy) / 9, 0, 1);
+        for (let i = 0; i < POSE_N; i++) AIR_MIX[i] = AIR_POSE[i] + (TUCK_POSE[i] - AIR_POSE[i]) * w;
+        tgt = AIR_MIX;
+      }
+      rate = launching ? 26 : 12;
       player.rotation.z = lean;
     }
     if (S.mode === 'menu') {   // standing proudly on the stage: chest out, one hand on his hip, the other presenting the sign
@@ -742,7 +1465,7 @@ async function boot() {
       player.position.set(STAGE.x - 1.5, STAGE.y + Math.sin(tm * 1.6) * 0.02, STAGE.z + 0.9);
       player.rotation.set(-0.06, -0.28, 0);
       playerHead.rotation.y = damp(playerHead.rotation.y, 0.1 + Math.sin(tm * 0.7) * 0.12, 6, dt);
-      if (!taped) { tgt = MENU_POSE.slice(); tgt[9] += Math.sin(tm * 2) * 0.05; tgt[5] = Math.sin(tm * 1.3) * 0.04; rate = 8; } else tgt = new Array(12).fill(0);
+      if (!taped) { tgt = MENU_POSE.slice(); tgt[9] += Math.sin(tm * 2) * 0.05; tgt[5] = Math.sin(tm * 1.3) * 0.04; tgt[13] += Math.sin(tm * 1.8) * 0.015; tgt[12] += Math.sin(tm * 0.7) * 0.05; rate = 8; } else tgt = new Array(POSE_N).fill(0);
     } else {
       player.position.z = 0;
     }
@@ -756,34 +1479,51 @@ async function boot() {
       tgt[0] -= 0.4 * crouch; tgt[1] -= 0.4 * crouch;   // hips fold forward
       tgt[2] += 0.8 * crouch; tgt[3] += 0.8 * crouch;   // knees bend to take the landing
       tgt[6] -= 0.3 * crouch; tgt[7] -= 0.3 * crouch;
+      tgt[13] += 0.3 * crouch; tgt[15] += 0.2 * crouch; tgt[16] += 0.2 * crouch;   // chest folds over his knees
       player.scale.set(1 + 0.05 * crouch, 1 - 0.12 * crouch, 1 + 0.05 * crouch);
       player.rotation.z += S.throwDir * 0.18 * r * Math.sin((1 - r) * 14);
+    } else if (!tossing && !S.onGround && S.airT < 0.14 && S.vy > 0) {   // stretch up through the push-off
+      const st = 1 - S.airT / 0.14;
+      player.scale.set(1 - 0.05 * st, 1 + 0.08 * st, 1 - 0.05 * st);
     } else {
       player.scale.set(1, 1, 1);
     }
 
+    if (S.car && playing) { tgt = DRIVE_POSE.slice(); tgt[12] += S.vx * 0.012; tgt[14] = -S.vx * 0.012; rate = 16; }   // driving: hands on the wheel
+
+    // the bomb throw: wind the right arm back, then whip it forward over the shoulder as the chest turns into it
+    if (S.throwing && playing) {
+      const t = S.throwing.t;
+      tgt = tgt.slice();
+      if (t < 0.12) { const u = t / 0.12; tgt[5] = 1.1 * u; tgt[7] = -0.7 * u; tgt[9] = 0.5 * u; tgt[12] = -0.55 * u; tgt[13] += 0.08 * u; }
+      else { const v = clamp((t - 0.12) / 0.13, 0, 1), e = v * v * (3 - 2 * v), r = clamp((t - 0.3) / 0.15, 0, 1); tgt[5] = (1.1 - 3.7 * e) * (1 - r) + tgt[5] * r; tgt[7] = (-0.7 + 0.5 * e) * (1 - r) + tgt[7] * r; tgt[9] = 0.5 * (1 - r); tgt[12] = (-0.55 + 1.0 * e) * (1 - r); tgt[13] += 0.2 * e * (1 - r); }
+      rate = Math.max(rate, 34);
+    }
+
     // every joint chases its target smoothly, so changing between poses never pops
-    S.pose = S.pose || new Array(12).fill(0);
+    S.pose = S.pose || new Array(POSE_N).fill(0);
     const a = 1 - Math.exp(-rate * dt);
-    for (let i = 0; i < 12; i++) S.pose[i] += (tgt[i] - S.pose[i]) * a;
+    for (let i = 0; i < POSE_N; i++) S.pose[i] += ((tgt[i] || 0) - S.pose[i]) * a;
     applyPose(player, S.pose);
     blob.position.x = player.position.x;
     blob.position.z = player.position.z;
-    blob.visible = S.mode !== 'menu';
+    blob.visible = S.mode !== 'menu' && !S.car;
     blob.material.opacity = 0.4 / (1 + 0.8 * S.y);   // fades as he jumps
   }
 
   function animateBoss(b, dt) {
     const tgt = cyclePose(b.anim * 7, 0.6);   // a jog: hips, knees, arms and elbows
-    if (b.warnT > 0) { tgt[5] = 1.1; tgt[7] = -0.5; tgt[9] = 0.25; }   // arm drawn back behind the head: the tell
-    else if (b.throwing > 0) {   // whip the arm forward
+    if (b.warnT > 0) { tgt[5] = 1.1; tgt[7] = -0.5; tgt[9] = 0.25; tgt[12] = 0.45; tgt[13] -= 0.1; }   // arm drawn back behind the head, chest wound up: the tell
+    else if (b.throwing > 0) {   // whip the arm forward, the chest following through
       const u = 1 - b.throwing / 0.35, e = u * u * (3 - 2 * u);
       tgt[5] = 1.1 - 3.5 * e;
       tgt[7] = -0.5 - 0.8 * (1 - e);
+      tgt[12] = 0.45 - 0.8 * e;
+      tgt[13] += 0.2 * e;
     }
     b.pose = b.pose || tgt.slice();
     const bk = 1 - Math.exp(-(b.throwing > 0 || b.warnT > 0 ? 24 : 12) * dt);
-    for (let i = 0; i < 12; i++) b.pose[i] += (tgt[i] - b.pose[i]) * bk;
+    for (let i = 0; i < POSE_N; i++) b.pose[i] += (tgt[i] - b.pose[i]) * bk;
     applyPose(b.mesh, b.pose);
     // a taunting head bob
     b.head ??= b.mesh.getObjectByName('head');
@@ -792,6 +1532,7 @@ async function boot() {
 
   function updateBoss(b, dt, move) {
     const m = b.mesh;
+    if (b.ragE) { b.pz = m.position.z; b.warn.visible = false; return; }   // limp: the physics moves him now
     b.pz = m.position.z;
     m.position.z += move;
     if (b.warnT <= 0) {   // lanes are locked while a throw is lining up, so the tell is always honest
@@ -831,16 +1572,32 @@ async function boot() {
   }
 
   let camX = 0, fovKick = 0;
+  const _look = new THREE.Vector3();
   function updateCamera(dt) {
     if (S.mode === 'menu') { worldFx.menuCamera(); return; }
+    if (S.mode === 'sandbox') { sandboxCamera(dt); return; }
     camX = damp(camX, player.position.x * 0.5, 6, dt);
     const sh = reduceMotion() ? 0 : S.shake;
     const ph = clamp(S.y * 0.3, 0, 1.5);   // the camera rises with every jump so his head never leaves the screen
-    camera.position.set(camX + rand(-1, 1) * sh * 0.3, 4.4 + ph + rand(-1, 1) * sh * 0.2, 8.2);
-    camera.lookAt(camX * 0.6, 1.5 + ph * 0.7, -6);
+    // trauma-based shake: smooth noise (not white noise), growing with the square of the trauma, like a real handheld camera taking a hit
+    const tt = performance.now() / 1000, amp = sh * sh * 0.5 + sh * 0.12;
+    const nz = (f, s) => Math.sin(tt * f + s) * 0.6 + Math.sin(tt * f * 2.37 + s * 1.9) * 0.4;
+    camera.position.set(camX + nz(31, 1) * amp * 0.5, (S.car ? 4.8 : 4.4) + ph + nz(37, 2) * amp * 0.35, (S.car ? 9.4 : 8.2) + nz(29, 3) * amp * 0.15);
+    _look.set(camX * 0.6, 1.5 + ph * 0.7, -6);
+    if (S.cine && S.mode === 'playing') {   // follow a boss as he is launched: the camera swings round to watch him fly
+      const c = S.cine;
+      c.t += dt;
+      if (c.e && c.e.rag.active && c.t < 2.4) {
+        const w = Math.sin(Math.PI * clamp(c.t / 2.4, 0, 1)) * 0.9;
+        _look.lerp(c.e.rag.centre, w);
+        camera.position.y += (c.e.rag.centre.y * 0.25) * w;
+      } else S.cine = null;
+    }
+    camera.lookAt(_look);
+    camera.rotateZ(nz(23, 4) * amp * 0.03);
     if (!reduceMotion() && S.mode === 'playing') camera.rotateZ(-(player.position.x - camX * 2) * 0.012);   // the camera leans into lane changes
     S.shake *= Math.exp(-8 * dt);
-    const target = reduceMotion() ? 0 : clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1) * 7 + (S.budgetT > 0 ? 3 : 0) + (S.cutT > 0 ? 2 : 0);   // a wider lens as you speed up and during power-ups
+    const target = reduceMotion() ? 0 : clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1) * 7 + (S.budgetT > 0 ? 3 : 0) + (S.cutT > 0 ? 2 : 0) + (S.car ? 4 : 0);   // a wider lens as you speed up and during power-ups
     fovKick = damp(fovKick, S.mode === 'playing' ? target : 0, 2, dt);
     const base = innerWidth / innerHeight < 0.9 ? 78 : 62;
     if (Math.abs(camera.fov - (base + fovKick)) > 0.01) { camera.fov = base + fovKick; camera.updateProjectionMatrix(); }
@@ -866,7 +1623,7 @@ async function boot() {
         }
         S.sceneryDist -= move;
         if (S.sceneryDist <= 0) { spawnScenery(Math.random() < 0.5 ? -1 : 1); S.sceneryDist = rand(4.5, 8.5); }
-        if (S.dist >= S.nextBossDist) { spawnBoss(); S.nextBossDist = S.dist + rand(130, 190); }
+        if (S.dist >= S.nextBossDist) { spawnBoss(); S.nextBossDist = S.dist + rand(130, 190) * (S.car ? CAR.bossEveryScale : 1); }
       }
 
       for (const h of world.hazards) { h.pz = h.mesh.position.z; h.mesh.position.z += move; }
@@ -887,6 +1644,8 @@ async function boot() {
       for (const sh of world.shots) { sh.pz = sh.mesh.position.z; sh.mesh.position.z += (S.speed + 16) * dt; sh.mesh.rotateOnAxis(TAPE_AXIS, dt * 13); }   // the thrown tape spins, diagonally
       worldFx.scroll(move, performance.now() / 1000, S.dist, dt);
       fx.update(dt, move);
+      crack.update(dt, move);
+      boom.update(dt, move, camera.position.z);
 
       // vertical motion: rise slowly, fall fast, optionally slam down
       if (!S.onGround) {
@@ -900,7 +1659,10 @@ async function boot() {
       S.invuln = Math.max(0, S.invuln - dt);
       S.budgetT = S.taxCuts === 0 ? 0 : Math.max(0, S.budgetT - dt);
       S.cutT = Math.max(0, S.cutT - dt);
+      S.shieldT = Math.max(0, S.shieldT - dt);
+      S.shield = S.shieldT > 0 ? 1 : 0;
       S.jumpBufferT = Math.max(0, S.jumpBufferT - dt);
+      S.sinceLand = (S.sinceLand ?? 99) + dt;
       if (S.thrown <= 0 && S.laneBuffer > 0) {   // a lane change pressed during the toss
         S.laneBuffer -= dt;
         if (S.laneBufferDir) { const d = S.laneBufferDir; S.laneBufferDir = 0; changeLane(d); }
@@ -909,6 +1671,16 @@ async function boot() {
       if (sim) { collide(); }
       prune();
       audio.music.setTempo(clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1));
+    } else if (S.mode === 'sandbox') {
+      fx.update(dt, 0);
+      crack.update(dt, 0);
+      boom.update(dt, 0, camera.position.z);
+      worldFx.scroll(0, performance.now() / 1000, 0, dt);   // (the lights keep sweeping)
+      updateSandbox(dt);
+    } else if (S.mode === 'over') {   // the game-over screen: the last blast keeps burning behind the card
+      fx.update(dt, 0);
+      crack.update(dt, 0);
+      boom.update(dt, 0, camera.position.z);
     } else if (S.mode === 'countdown') {
       S.countdown -= dt;
       const n = Math.ceil(S.countdown / 0.5);
@@ -916,15 +1688,61 @@ async function boot() {
       if (S.countdown <= 0) { $('count').textContent = ''; S.mode = 'playing'; document.body.dataset.mode = 'playing'; $('pauseBtn').style.display = 'block'; S.invuln = Math.max(S.invuln, 0.8); }
     }
 
+    // rigid bodies: the road slides under them, and the air moves with it
+    if (active || S.mode === 'over' || S.mode === 'sandbox') {
+      tetherPlayer(dt);
+      phys.groundVel.set(0, 0, S.mode === 'over' || S.mode === 'sandbox' ? 0 : S.speed);
+      phys.airVel.copy(phys.groundVel);
+      phys.step(dt);
+      phys.sync();
+      stepRagdolls(dt);
+      debris.update(dt);
+      updateBombs(dt);
+      if (S.throwing) { S.throwing.t += dt; if (!S.throwing.released && S.throwing.t >= 0.12) { S.throwing.released = true; releaseBomb(); } if (S.throwing.t > 0.45) S.throwing = null; }
+      updateBlast(dt, S.mode === 'over' || S.mode === 'sandbox' ? 0 : S.speed * dt);
+      if (S.mode === 'playing') updateKO(dt, S.speed * dt);
+      if (S.mode === 'playing' && S.car) {   // the car's minutes run down only while he is driving
+        W.carSecs -= dt / Math.max(0.12, S.timeScale || 1);
+        carSave += dt;
+        if (carSave > 5) { carSave = 0; saveWallet(); }
+        if (W.carSecs <= 0) { W.carSecs = 0; W.carOn = false; setCar(false); popup('THE TAX CAR RETIRES!', '#ffd34d'); saveWallet(); }
+      }
+    }
+
+    const limp = playerRag && !playerRag.rag.released;   // the ragdoll owns his transform while he is limp
     // sideways: a critically damped spring towards the chosen lane (also gives the lean its velocity)
-    if (S.mode !== 'menu') {
+    if (S.mode !== 'menu' && !limp) {
       const w = PHYS.laneOmega, x = player.position.x;
       S.vx += (w * w * (LANES[S.lane] - x) - 2 * w * S.vx) * dt;
       player.position.x = x + S.vx * dt;
     }
-    player.position.y = S.y;
+    if (!limp) player.position.y = S.y;
     player.visible = S.invuln <= 0 || Math.floor(S.invuln * 14) % 2 === 0;
-    if (S.mode !== 'paused') animatePlayer(dt);
+    if (S.mode !== 'paused') {
+      if (limp) {
+        playerRag.t += dt;
+        cos.animate(dt);
+        if (playerRag.tether && playerRag.t > 0.3 && S.onGround) releasePlayerRag();   // he has landed: ease back into the run
+      } else if (playerRag) {   // blending back from limp to the animated pose
+        const pr = playerRag;
+        pr.rag.resetJoints();
+        animatePlayer(dt);
+        if (S.mode === 'sandbox') player.rotation.y = 0;
+        pr.blendT -= dt;
+        const k = clamp(1 - pr.blendT / pr.blendDur, 0, 1);
+        pr.rag.blend(k * k * (3 - 2 * k));
+        if (pr.blendT <= 0) playerRag = null;
+      } else { animatePlayer(dt); if (S.mode === 'sandbox') player.rotation.y = 0; }   // in the sandbox he faces the camera
+    }
+    if (S.car && S.mode !== 'menu' && S.mode !== 'sandbox' && !limp) {   // he sits in the car, which follows him and leans into the lane changes
+      player.position.set(player.position.x, S.y - 0.3, 0.2);
+      carFx.visible = true;
+      carFx.update(dt, { x: player.position.x, y: S.y, vx: S.vx, vy: S.vy, speed: S.mode === 'playing' ? S.speed : 0 });
+      if (S.mode === 'playing' && dt > 0) {
+        if (Math.random() < 0.7) { carFx.exhaust(_v); for (const sx of [-0.4, 0.4]) fx.emit({ kind: 1, x: _v.x + sx, y: _v.y, z: _v.z, vx: 0, vy: rand(0, 0.6), vz: rand(2, 6), life: 0.22, size: 0.16, size1: 0.5, drag: 2, grav: 0, heat: 0.9, cool: 4, mode: 1, color: 0xffffff, alpha: 0.7, turb: 1 }); }
+        if (S.onGround && Math.random() < 0.5) fx.splash(player.position.x + (Math.random() < 0.5 ? -0.86 : 0.86), 0.98, 1, 1.4);   // spray off the wheels
+      }
+    }
   }
 
   /* ---------- sizing, adaptive quality, main loop ---------- */
@@ -949,11 +1767,15 @@ async function boot() {
        stage 3  only now does the render scale come down, in small steps, and never below MIN_SCALE
      After a long stretch of fast frames it tries to give things back, one step at a time, and if that is too slow
      it puts them away again and leaves them alone for several minutes. */
-  const noAdapt = /noadapt/.test(location.hash + location.search);
+  const noAdapt = /noadapt/.test(location.hash + location.search) || settings.quality === 'max' || settings.quality === 'low';
   const MIN_SCALE = Math.min(1, MAX_SCALE), SLOW_MS = 24, FAST_MS = 19, RESTORE_AFTER = 25;
-  let accT = 0, accN = 0, goodT = 0, stage = 0, settleT = 3, probingAt = 0, noRestoreUntil = 0;
+  let accT = 0, accN = 0, goodT = 0, stage = settings.quality === 'low' ? 2 : 0, settleT = 3, probingAt = 0, noRestoreUntil = 0;
   function applyStage() {
-    glass.setLevel(0);   // rain and window drops never switch off; only the resolution gives way when the frame rate is low
+    // stage 1: no street reflection. stage 2: no bloom and fewer particles. stage 3+ : the resolution comes down (see adaptQuality).
+    glass.setLevel(0);   // rain and window drops never switch off
+    reflection.enabled = stage < 1;
+    glass.features.bloom = stage < 2;
+    fx.quality = stage < 2 ? 1 : 0.6;
     worldFx.lowDetail(false);
   }
   function setScale(v) {
@@ -973,13 +1795,14 @@ async function boot() {
       goodT = 0;
       if (probingAt && now - probingAt < 8000) noRestoreUntil = now + 300000;   // giving something back was too much: leave it off for a while
       probingAt = 0;
-      if (renderScale > MIN_SCALE + 0.01) { stage = 3; setScale(renderScale * 0.92); settleT = 2; }
+      if (stage < 2) { stage++; applyStage(); settleT = 2; }   // give up the expensive extras first
+      else if (renderScale > MIN_SCALE + 0.01) { stage = 3; setScale(renderScale * 0.92); settleT = 2; }
     } else if (avg < FAST_MS) {
       goodT += 0.75;
       if (goodT > RESTORE_AFTER && now > noRestoreUntil && (stage > 0 || renderScale < MAX_SCALE - 0.01)) {
         goodT = 0; probingAt = now; settleT = 2;
         if (renderScale < MAX_SCALE - 0.01) setScale(Math.min(MAX_SCALE, renderScale * 1.1));
-        else { stage--; applyStage(); }
+        else { stage = Math.min(stage, 2) - 1; applyStage(); }
       }
     }
   }
@@ -994,6 +1817,8 @@ async function boot() {
 
     let dt = raw;
     if (S.hitStop > 0) { S.hitStop -= raw; dt = 0; }   // a couple of frozen frames sell a hit
+    if (S.mode === 'sandbox' && sb.slow) dt *= 0.22;
+    if (S.timeScale < 1) { dt *= Math.max(0.12, S.timeScale); S.timeScale = Math.min(1, S.timeScale + raw * 0.85); }   // slow motion eases back to full speed
     if (S.mode === 'dying') {
       S.dyingT += raw;
       dt *= clamp(1 - S.dyingT / 0.7, 0.12, 1);   // slow motion into the game-over screen
@@ -1006,7 +1831,10 @@ async function boot() {
     }
     if (dt === 0 && S.mode !== 'paused') animatePlayer(0);
     if (S.mode !== 'paused') cos.stepCape(dt);
+    boomGlow = Math.max(0, boomGlow - raw * 2.2);
+    hemi.intensity = 1.25 + 2.4 * boomGlow;
     updateCamera(raw);
+    glass.setSpeed(S.mode === 'playing' ? clamp((S.speed - RUN.startSpeed) / (RUN.maxSpeed - RUN.startSpeed), 0, 1) * 0.8 + 0.1 : 0);
     updateHud();
     glass.render();
   }
@@ -1031,23 +1859,28 @@ async function boot() {
     warn.position.set(0, 0.05, -4);
     scene.add(warn);
     temp.push(warn);
+    boom.prewarm(true);
+    crack.prewarm(true);
     glass.render();
     glass.render();
+    boom.prewarm(false);
+    crack.prewarm(false);
     for (const m of temp) scene.remove(m);
     worldFx.stageMode(true);
   }
 
   /* ---------- lifecycle: pause when the tab is hidden, survive a lost GL context ---------- */
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { pauseGame(); audio.suspend(); } else if (S.mode !== 'paused') audio.resume();
+    if (document.hidden) { if (!window.__game) pauseGame(); audio.suspend(); } else if (S.mode !== 'paused') audio.resume();
   });
-  addEventListener('blur', () => pauseGame());
+  addEventListener('blur', () => { if (!window.__game) pauseGame(); });   // (the debug build keeps running when its window loses focus, so it can be driven from tests)
   $('game').addEventListener('webglcontextlost', (e) => { e.preventDefault(); pauseGame(); });
 
   if (/debug/.test(location.hash + location.search)) {
-    window.__game = { settings, worldFx, glass, rain, spawnPowerup, collectPowerup, collectTaxCut, popup, S, W, world, player, T, scene, camera, renderer, fx, startGame, spawnBoss, spawnHazard, spawnTaxCuts, jump, changeLane, fastFall, pauseGame, resumeGame, hurt, gameOver, clearWorld, backToMenu, bossHeight, collide, update, updateCamera, spawnRow, cos, manual: false };
+    window.__game = { carFx, setCar, toggleCar, carHitBoss, sb, startSandbox, knockPlayer, sbSpawnBoss, sbThrowBall, sbThrowBomb, sbDropStack, sbReset, updateKO, reflection, sun, ragdollPlayer, useBomb, releaseBomb, bombs, comic, debris, launchBoss, phys, ragdolls, throwRagdoll, endRagdoll, settings, worldFx, glass, rain, spawnPowerup, collectPowerup, collectTaxCut, popup, S, W, world, player, T, scene, camera, renderer, fx, startGame, spawnBoss, spawnHazard, spawnTaxCuts, jump, changeLane, fastFall, pauseGame, resumeGame, hurt, gameOver, clearWorld, boom, crack, detonate, crackOpen, tapeThrow, backToMenu, bossHeight, collide, update, updateCamera, spawnRow, cos, manual: false };
   }
 
+  applyStage();         // (a 'Low' graphics setting starts with the extras already off)
   glass.precompile();   // build every shader up front, so nothing hitches mid-run
   prewarm();            // and upload every geometry and texture, by drawing one of everything once
   $('loadBar').style.width = '100%';
