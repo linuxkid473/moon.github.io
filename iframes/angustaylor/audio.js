@@ -94,8 +94,6 @@ export const sfx = {
     tone({ f0: hz(base + 7), dur: 0.18, type: 'square', vol: 0.09, at: 0.06, lp: 5000 });
   },
   hit() { tone({ f0: 180, f1: 40, dur: 0.35, type: 'sawtooth', vol: 0.35, lp: 1200 }); noise({ dur: 0.3, vol: 0.3, lp: 1800 }); },
-  horn() { tone({ f0: 349, dur: 0.32, type: 'square', vol: 0.09, lp: 2400 }); tone({ f0: 440, dur: 0.32, type: 'square', vol: 0.09, lp: 2400 }); },
-  crunch() { tone({ f0: 140, f1: 50, dur: 0.28, type: 'sawtooth', vol: 0.32, lp: 1400 }); noise({ dur: 0.35, vol: 0.34, lp: 2600 }); tone({ f0: 900, f1: 300, dur: 0.12, type: 'square', vol: 0.08, lp: 3000 }); },
   orb() { tone({ f0: 900, f1: 260, dur: 0.3, type: 'sawtooth', vol: 0.1, lp: 3000 }); },
   warn() { tone({ f0: 520, dur: 0.1, type: 'square', vol: 0.09, lp: 2500 }); tone({ f0: 520, dur: 0.1, type: 'square', vol: 0.09, at: 0.14, lp: 2500 }); },
   boss() { tone({ f0: 110, f1: 82, dur: 0.6, type: 'sawtooth', vol: 0.22, lp: 700 }); tone({ f0: 116, f1: 87, dur: 0.6, type: 'sawtooth', vol: 0.16, lp: 700 }); },
@@ -108,20 +106,6 @@ export const sfx = {
   fanfare() { [72, 72, 76, 79, 84].forEach((m, i) => tone({ f0: hz(m), dur: 0.17, type: 'sawtooth', vol: 0.1, at: i * 0.11, lp: 3500 })); },
   tape() { tone({ f0: 700, f1: 160, dur: 0.28, type: 'triangle', vol: 0.12 }); },
   blame() { tone({ f0: 440, f1: 880, dur: 0.12, type: 'triangle', vol: 0.18 }); tone({ f0: 330, f1: 220, dur: 0.3, type: 'sawtooth', vol: 0.1, at: 0.1, lp: 1500 }); },
-  crack() {   // the shield splitting an obstacle: a sharp snap, then a hollow thud
-    noise({ dur: 0.16, vol: 0.3, hp: 1600 });
-    tone({ f0: 1100, f1: 180, dur: 0.18, type: 'square', vol: 0.1, lp: 3200 });
-    tone({ f0: 200, f1: 55, dur: 0.3, type: 'sine', vol: 0.32, at: 0.05 });
-    noise({ dur: 0.22, vol: 0.2, lp: 2600, at: 0.07 });
-  },
-  explosion() {   // the tax bomb: a hard crack, a falling boom, a roar and a long rumble, then debris pattering down
-    tone({ f0: 150, f1: 26, dur: 1.2, type: 'sine', vol: 0.8 });
-    tone({ f0: 70, f1: 22, dur: 1.7, type: 'triangle', vol: 0.5, lp: 220 });
-    noise({ dur: 0.2, vol: 0.6, hp: 1600 });
-    noise({ dur: 1.3, vol: 0.62, lp: 1200 });
-    noise({ dur: 2.1, vol: 0.34, lp: 340, at: 0.05 });
-    for (let i = 0; i < 9; i++) noise({ dur: 0.05, vol: 0.14, hp: 2500, lp: 7000, at: 0.4 + i * 0.11 + Math.random() * 0.06 });
-  },
   best() { [0, 4, 7, 12, 7, 12].forEach((n, i) => tone({ f0: hz(72 + n), dur: 0.2, type: 'square', vol: 0.1, at: i * 0.09, lp: 4000 })); },
 };
 

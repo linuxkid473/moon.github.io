@@ -12,10 +12,10 @@ export const hexCss = (n) => '#' + n.toString(16).padStart(6, '0');
 export const rgbHex = (r, g, b) => (r << 16) | (g << 8) | b;
 
 const matCache = new Map();
-/** Smooth-shaded standard material, cached by colour and options so clones share it. */
+/** Flat-shaded standard material, cached by colour and options so clones share it. */
 export function mat(color, opts = {}) {
   const key = `${color}|${JSON.stringify(opts)}`;
-  if (!matCache.has(key)) matCache.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: false, ...opts }));
+  if (!matCache.has(key)) matCache.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.8, flatShading: true, ...opts }));
   return matCache.get(key);
 }
 

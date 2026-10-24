@@ -1,14 +1,15 @@
-// The final passes. The scene is drawn in HDR (half-float, 4x MSAA) and then:
-//   1. rain: the water field (where every drop is and how it bends the picture) is computed at half the pixels
-//   2. bloom: a bright-pass and a chain of 6 down/up-sampled levels, so hot fire, sparks and lamps glow
-//   3. composite: sees the scene through the rain-spattered glass, adds the bloom, a shockwave ripple, speed blur and a hint of
-//      chromatic aberration, tone-maps with the ACES filmic curve, grades, sharpens, adds a vignette and grain
-// Also here: a planar reflection of the street for the wet road (see reflection.js).
+// The final passes: the game is drawn to a texture and then seen through a pane of fogged, rain-spattered glass
+// with a vignette (no bloom or blur: the picture stays sharp).
+//
+// Two passes keep it cheap: the water field (where every drop is and how it bends the picture) is computed at
+// a quarter of the pixels into two small 8-bit targets, then the full-resolution pass just reads it, bends the
+// scene through it and adds the floor, bloom and vignette. 
 //
 // Rain on glass: a mist of tiny beads, a few bigger drops, and drops that slide down with stop-and-go motion,
 // wiping a clear trail through the condensation and leaving little beads behind. Every drop bends the picture
 // behind it like a small lens, with a bright glint. It is all computed in the shader from a few hashes, so
 // nothing is stored or uploaded.
+//
 import { THREE } from './gfx.js';
 import { S, settings, store } from './state.js';
 
@@ -157,37 +158,28 @@ const COMP_FRAG = `
     uniform sampler2D tScene;
     uniform sampler2D tWaterA;
     uniform sampler2D tWaterB;
-    uniform sampler2D tBloom;
     uniform float uTime;
     uniform float uRain;    // 1 = drops on the window, 0 = none (the glow and grading still apply)
     uniform float uDark;    // how dark the rim of a drop is
     uniform float uSharp;   // strength of the sharpening
-    uniform float uBloom;   // how much the bloom is added
-    uniform float uExposure;
-    uniform float uAberr;   // chromatic aberration (a kick on impacts)
-    uniform float uSpeed;   // radial speed blur, 0..1
-    uniform vec4 uShock;    // xy: where (uv), z: radius, w: strength; strength 0 = off
-    uniform float uGrain;
     uniform vec2 uRes;
     varying vec2 vUv;
 
     float h11(float n) { return fract(sin(n * 127.1 + 4.1) * 43758.5453); }
     float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-
-    // ACES filmic (Narkowicz fit): rolls highlights off smoothly instead of clipping them
-    vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
-    vec3 sceneAt(vec2 uv) { return min(max(textureLod(tScene, clamp(uv, 0.001, 0.999), 0.0).rgb, vec3(0.0)), vec3(120.0)); }
+    float vnoise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      float a = h21(i);
+      float b = h21(i + vec2(1.0, 0.0));
+      float c = h21(i + vec2(0.0, 1.0));
+      float d = h21(i + vec2(1.0, 1.0));
+      return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    }
 
     void main() {
       float aspect = uRes.x / uRes.y;
-      vec2 uv0 = vUv;
-      // the shockwave of a blast: a ring that rushes outwards and bends the picture
-      if (uShock.w > 0.0) {
-        vec2 dv = (vUv - uShock.xy) * vec2(aspect, 1.0);
-        float d = length(dv);
-        float ring = exp(-pow((d - uShock.z) / 0.05, 2.0));
-        uv0 += normalize(dv + 1e-5) * ring * uShock.w * 0.04 / vec2(aspect, 1.0);
-      }
       // the water field (computed at lower resolution, so it arrives softly blended)
       vec2 g = vec2(0.0), nrm = vec2(0.0);
       float hgt = 0.0, rad = 0.0, wet = 0.0;
@@ -197,114 +189,44 @@ const COMP_FRAG = `
         nrm = A.ba * 2.0 - 1.0;
         hgt = B.r; rad = B.g * 0.04; wet = B.b;
       }
-      vec2 uv = clamp(uv0 - g / vec2(aspect, 1.0), 0.001, 0.999);
-      vec3 hdr;
-      // radial speed blur towards the edges, and a touch of chromatic aberration that grows away from the centre
-      vec2 cv = uv - 0.5;
-      float edge = dot(cv, cv);
-      float ab = uAberr + 0.0012 * edge * 4.0;
-      if (uSpeed > 0.001) {
-        vec3 acc = vec3(0.0); float wsum = 0.0;
-        for (int i = 0; i < 6; i++) {
-          float f = float(i) / 5.0;
-          vec2 p = 0.5 + cv * (1.0 - uSpeed * 0.07 * f * smoothstep(0.04, 0.35, edge));
-          vec3 c = vec3(sceneAt(p + cv * ab).r, sceneAt(p).g, sceneAt(p - cv * ab).b);
-          float w = 1.0 - f * 0.5; acc += c * w; wsum += w;
-        }
-        hdr = acc / wsum;
-      } else {
-        hdr = vec3(sceneAt(uv + cv * ab).r, sceneAt(uv).g, sceneAt(uv - cv * ab).b);
-      }
-      hdr += texture2D(tBloom, uv).rgb * uBloom;
+      vec2 uv = clamp(vUv - g / vec2(aspect, 1.0), 0.001, 0.999);
+      vec3 col = textureLod(tScene, uv, 0.0).rgb;   // always crisp: no fog, no blur
       if (hgt > 0.004) {
         vec3 n = normalize(vec3(nrm, hgt) + vec3(0.0, 0.0, 0.0001));
         vec3 L = normalize(vec3(-0.5, 0.6, 0.62));
-        vec3 L2 = normalize(vec3(0.5, -0.6, 0.62));
+        vec3 L2 = normalize(vec3(0.5, -0.6, 0.6));
         float spec = pow(max(dot(n, L), 0.0), 30.0);
         float caus = pow(max(dot(n, L2), 0.0), 8.0) * 0.25;
         float dark = (1.0 - smoothstep(0.04, 0.38, hgt)) * smoothstep(0.0, 0.05, hgt);   // the dark outline real drops have
         float glint = 0.05 * hgt;
         float sz = mix(0.2, 1.0, smoothstep(0.003, 0.011, rad));   // tiny drops barely glint; bigger ones shine
-        hdr = hdr * (1.0 - uDark * dark * sz) + (spec * 0.55 + caus * 0.6 + glint) * sz * vec3(1.0, 0.97, 0.95);
+        col = col * (1.0 - uDark * dark * sz) + (spec * 0.55 + caus * 0.6 + glint) * sz * vec3(1.0, 0.97, 0.95);
       }
-      hdr += vec3(0.025, 0.028, 0.032) * wet * 0.5;   // the wet streaks catch a little light
-      vec3 col = aces(hdr * uExposure);
-      // a light sharpen (unsharp mask) on the tone-mapped picture, so edges and lettering stay crisp
+      col += vec3(0.025, 0.028, 0.032) * wet;   // the wet streaks catch a little light
+      // a light sharpen (unsharp mask), so edges and lettering stay crisp
       vec2 px = 1.0 / uRes;
-      vec3 around = (aces(sceneAt(uv + vec2(px.x, 0.0)) * uExposure) + aces(sceneAt(uv - vec2(px.x, 0.0)) * uExposure)
-                   + aces(sceneAt(uv + vec2(0.0, px.y)) * uExposure) + aces(sceneAt(uv - vec2(0.0, px.y)) * uExposure)) * 0.25;
+      vec3 around = (textureLod(tScene, uv + vec2(px.x, 0.0), 0.0).rgb + textureLod(tScene, uv - vec2(px.x, 0.0), 0.0).rgb
+                   + textureLod(tScene, uv + vec2(0.0, px.y), 0.0).rgb + textureLod(tScene, uv - vec2(0.0, px.y), 0.0).rgb) * 0.25;
       col += (col - around) * uSharp;
-      // grade: cool shadows, warm highlights, a little extra contrast and saturation
-      float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-      col = mix(vec3(lum), col, 1.12);
-      col = mix(col, col * vec3(0.94, 0.98, 1.08), 1.0 - smoothstep(0.0, 0.5, lum));
-      col = mix(col, col * vec3(1.06, 1.0, 0.92), smoothstep(0.5, 1.0, lum));
       // a gentle vignette pulls the eye to the runner
       vec2 vc = (vUv - 0.5) * vec2(1.15, 1.0) * 2.0;
-      col *= 1.0 - 0.3 * smoothstep(0.55, 1.45, length(vc));
-      col += (h21(vUv * uRes + fract(uTime) * 91.0) - 0.5) * uGrain;   // film grain
+      col *= 1.0 - 0.28 * smoothstep(0.55, 1.45, length(vc));
+      col = mix(col, col * vec3(0.78, 0.95, 1.3) + vec3(0.0, 0.01, 0.05), 0.65);   // an overall blue hue
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
       #include <colorspace_fragment>
     }`;
 
-/* ---------- bloom ---------- */
-const BLOOM_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
-// first level: threshold with a soft knee and a Karis-style weighting so one hot pixel cannot flicker
-const BLOOM_PRE = `
-    uniform sampler2D tSrc; uniform vec2 uTexel; uniform float uThreshold; uniform float uKnee;
-    varying vec2 vUv;
-    vec3 prefilter(vec3 c) {
-      c = min(max(c, vec3(0.0)), vec3(60.0));
-      float br = max(c.r, max(c.g, c.b));
-      float soft = clamp(br - uThreshold + uKnee, 0.0, 2.0 * uKnee);
-      soft = soft * soft / (4.0 * uKnee + 1e-4);
-      float contrib = max(soft, br - uThreshold) / max(br, 1e-4);
-      return c * contrib;
-    }
-    void main() {
-      vec3 a = prefilter(texture2D(tSrc, vUv + uTexel * vec2(-1.0, -1.0)).rgb);
-      vec3 b = prefilter(texture2D(tSrc, vUv + uTexel * vec2(1.0, -1.0)).rgb);
-      vec3 c = prefilter(texture2D(tSrc, vUv + uTexel * vec2(-1.0, 1.0)).rgb);
-      vec3 d = prefilter(texture2D(tSrc, vUv + uTexel * vec2(1.0, 1.0)).rgb);
-      gl_FragColor = vec4(min((a + b + c + d) * 0.25, vec3(30.0)), 1.0);
-    }`;
-const BLOOM_DOWN = `
-    uniform sampler2D tSrc; uniform vec2 uTexel;
-    varying vec2 vUv;
-    void main() {
-      vec3 s = texture2D(tSrc, vUv).rgb * 0.25;
-      s += texture2D(tSrc, vUv + uTexel * vec2(-1.0, -1.0)).rgb * 0.125 + texture2D(tSrc, vUv + uTexel * vec2(1.0, -1.0)).rgb * 0.125;
-      s += texture2D(tSrc, vUv + uTexel * vec2(-1.0, 1.0)).rgb * 0.125 + texture2D(tSrc, vUv + uTexel * vec2(1.0, 1.0)).rgb * 0.125;
-      s += texture2D(tSrc, vUv + uTexel * vec2(-2.0, 0.0)).rgb * 0.0625 + texture2D(tSrc, vUv + uTexel * vec2(2.0, 0.0)).rgb * 0.0625;
-      s += texture2D(tSrc, vUv + uTexel * vec2(0.0, -2.0)).rgb * 0.0625 + texture2D(tSrc, vUv + uTexel * vec2(0.0, 2.0)).rgb * 0.0625;
-      gl_FragColor = vec4(s, 1.0);
-    }`;
-const BLOOM_UP = `
-    uniform sampler2D tSrc; uniform vec2 uTexel; uniform float uWeight;
-    varying vec2 vUv;
-    void main() {   // a 3x3 tent, added onto the larger level underneath
-      vec3 s = texture2D(tSrc, vUv).rgb * 4.0;
-      s += (texture2D(tSrc, vUv + uTexel * vec2(-1.0, 0.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(1.0, 0.0)).rgb
-          + texture2D(tSrc, vUv + uTexel * vec2(0.0, -1.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(0.0, 1.0)).rgb) * 2.0;
-      s += texture2D(tSrc, vUv + uTexel * vec2(-1.0, -1.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(1.0, -1.0)).rgb
-         + texture2D(tSrc, vUv + uTexel * vec2(-1.0, 1.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(1.0, 1.0)).rgb;
-      gl_FragColor = vec4(s / 16.0 * uWeight, 1.0);
-    }`;
-
 const WATER_SCALE = 0.5;   // the water field is computed at this fraction of the screen size, each way
-const BLOOM_LEVELS = 6;
 
-export function createGlass({ renderer, scene, camera, rain, reflection }) {
-  const halfFloat = renderer.capabilities.isWebGL2;
+export function createGlass({ renderer, scene, camera, rain }) {
   const sceneRT = new THREE.WebGLRenderTarget(2, 2, {
-    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false,
-    type: THREE.HalfFloatType,   // HDR: fire and lamps keep values above 1, so they can bloom and tone-map instead of clipping
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false,   // no mip chain: nothing blurs it, and it costs a pass every frame
     samples: renderer.getPixelRatio() >= 1.5 ? 2 : 4,   // at 1.5x or more the extra pixels already smooth edges, so 2x MSAA looks the same for half the memory traffic
+    colorSpace: THREE.SRGBColorSpace,    // stored like a normal picture, so the dark reds keep their detail instead of banding
   });
   const waterRT = new THREE.WebGLMultipleRenderTargets(2, 2, 2, {   // two 8-bit targets drawn at once (see WATER_FRAG for what is packed where)
     depthBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
   });
-  const bloomRT = Array.from({ length: BLOOM_LEVELS }, () => new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, depthBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }));
   const shared = { uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } };
   const VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
   const waterMat = new THREE.ShaderMaterial({
@@ -314,72 +236,30 @@ export function createGlass({ renderer, scene, camera, rain, reflection }) {
   });
   const compMat = new THREE.ShaderMaterial({
     uniforms: {
-      ...shared, tScene: { value: sceneRT.texture }, tWaterA: { value: waterRT.texture[0] }, tWaterB: { value: waterRT.texture[1] }, tBloom: { value: bloomRT[0].texture },
-      uRain: { value: 1 }, uSharp: { value: 0.55 }, uDark: { value: 0.16 }, uBloom: { value: 0.4 }, uExposure: { value: 0.95 }, uAberr: { value: 0 }, uSpeed: { value: 0 },
-      uShock: { value: new THREE.Vector4(0.5, 0.5, 0, 0) }, uGrain: { value: 0.010 },
+      ...shared, tScene: { value: sceneRT.texture }, tWaterA: { value: waterRT.texture[0] }, tWaterB: { value: waterRT.texture[1] },
+      uRain: { value: 1 }, uSharp: { value: 0.7 }, uDark: { value: 0.28 },
     },
     vertexShader: VERT, fragmentShader: COMP_FRAG, depthTest: false, depthWrite: false,
   });
-  const bloomU = { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: 1.25 }, uKnee: { value: 0.5 }, uWeight: { value: 1 } };
-  const mkBloom = (frag, additive) => new THREE.ShaderMaterial({ uniforms: bloomU, vertexShader: BLOOM_VERT, fragmentShader: frag, depthTest: false, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NoBlending, transparent: !!additive });
-  const preMat = mkBloom(BLOOM_PRE, false), downMat = mkBloom(BLOOM_DOWN, false), upMat = mkBloom(BLOOM_UP, true);
   const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const waterScene = new THREE.Scene(), compScene = new THREE.Scene(), bloomScene = new THREE.Scene();
+  const waterScene = new THREE.Scene(), compScene = new THREE.Scene();
   waterScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), waterMat));
   compScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat));
-  const bloomQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), preMat);
-  bloomScene.add(bloomQuad);
   let size = [1, 1], broken = false, level = 0;   // level: 0 everything, 1 lighter rain, 2 no drops on the window (the rest of the pass stays)
   let rainClock = 0, lastT = performance.now(), stormT = 99;   // the rain's own clock, and how long since the storm began
-  const features = { bloom: true, reflections: true };
-  let shockT = 99, shock = { x: 0.5, y: 0.5, reach: 0.9 }, aberr = 0, speedBlur = 0;
 
   function fit() {   // the pass works at the screen's drawing-buffer size
     const pr = renderer.getPixelRatio();
     const w = Math.max(2, Math.round(size[0] * pr)), h = Math.max(2, Math.round(size[1] * pr));
     sceneRT.setSize(w, h);
     waterRT.setSize(Math.max(2, Math.round(w * WATER_SCALE)), Math.max(2, Math.round(h * WATER_SCALE)));
-    bloomRT.forEach((rt, i) => rt.setSize(Math.max(2, Math.round(w / 2 ** (i + 1))), Math.max(2, Math.round(h / 2 ** (i + 1)))));
-    reflection.resize(w, h);
     shared.uRes.value.set(w, h);
   }
   renderer.debug.onShaderError = () => { broken = true; };   // if a device can't compile the shaders, just play without them
 
-  function runBloom() {
-    bloomQuad.material = preMat;
-    bloomU.tSrc.value = sceneRT.texture;
-    bloomU.uTexel.value.set(1 / sceneRT.width, 1 / sceneRT.height);
-    renderer.setRenderTarget(bloomRT[0]); renderer.render(bloomScene, quadCam);
-    bloomQuad.material = downMat;
-    for (let i = 1; i < BLOOM_LEVELS; i++) {
-      bloomU.tSrc.value = bloomRT[i - 1].texture;
-      bloomU.uTexel.value.set(1 / bloomRT[i - 1].width, 1 / bloomRT[i - 1].height);
-      renderer.setRenderTarget(bloomRT[i]); renderer.render(bloomScene, quadCam);
-    }
-    bloomQuad.material = upMat;
-    const prev = renderer.autoClear;
-    renderer.autoClear = false;
-    for (let i = BLOOM_LEVELS - 1; i > 0; i--) {
-      bloomU.tSrc.value = bloomRT[i].texture;
-      bloomU.uTexel.value.set(1 / bloomRT[i].width, 1 / bloomRT[i].height);
-      bloomU.uWeight.value = 1;
-      renderer.setRenderTarget(bloomRT[i - 1]); renderer.render(bloomScene, quadCam);
-    }
-    renderer.autoClear = prev;
-  }
-
   return {
     uniforms: { ...compMat.uniforms, uDrop: waterMat.uniforms.uDrop, uStorm: waterMat.uniforms.uStorm },
-    rts: { sceneRT, bloomRT },
-    features,
-    reflection,
     resize(w, h) { size = [w, h]; fit(); },
-    /** A blast went off at uv (0..1): a ring races out across the screen, bending the picture. */
-    shock(x, y, reach = 0.9) { shockT = 0; shock = { x, y, reach }; },
-    /** a kick of chromatic aberration (an impact) */
-    punch(v = 1) { aberr = Math.max(aberr, v); },
-    /** 0..1: the speed of the run, for the radial blur */
-    setSpeed(v) { speedBlur = v; },
     render() {
       const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
       lastT = now;
@@ -388,31 +268,21 @@ export function createGlass({ renderer, scene, camera, rain, reflection }) {
       rain.setVisible(outdoors);
       if (outdoors) rain.step(dt, S.mode === 'playing' || S.mode === 'dying' ? S.speed : 3);
       if (broken || level >= 2) { renderer.setRenderTarget(null); renderer.render(scene, camera); return; }   // level 2: no post-processing at all, the scene goes straight to the screen (still full resolution and anti-aliased)
-      renderer.shadowMap.needsUpdate = true;   // the sun's shadow map is refreshed once a frame, by whichever pass draws first
       stormT += dt;
       const storm = 0;                // no opening downpour any more: the rain stays calm for the whole run
       rainClock += dt;
-      shockT += dt;
-      aberr = Math.max(0, aberr - dt * 3.2);
       const drops = settings.glass && fancy;
       shared.uTime.value = rainClock;
       waterMat.uniforms.uStorm.value = storm;
       waterMat.uniforms.uLite.value = 0;   // all bead layers on
       const u = compMat.uniforms;
       u.uRain.value = drops ? 1 : 0;           // drops on the window
-      u.uAberr.value = aberr * 0.012;
-      u.uSpeed.value = speedBlur;
-      u.uBloom.value = features.bloom ? 0.4 : 0;
-      const sw = shockT < 0.9 ? 1 - shockT / 0.9 : 0;
-      u.uShock.value.set(shock.x, shock.y, shockT * 0.9 * (shock.reach + 0.4) / 0.9, sw * sw);
       if (drops) {   // the water field, at low resolution
         renderer.setRenderTarget(waterRT);
         renderer.render(waterScene, quadCam);
       }
-      if (features.reflections) reflection.render(camera);   // the street, mirrored, for the wet road (this pass also refreshes the shadow map)
       renderer.setRenderTarget(sceneRT);
       renderer.render(scene, camera);
-      if (features.bloom) runBloom();
       renderer.setRenderTarget(null);
       renderer.render(compScene, quadCam);
     },
@@ -421,13 +291,10 @@ export function createGlass({ renderer, scene, camera, rain, reflection }) {
     /** 0: everything. 1: no rain or window drops (the sharpen and vignette stay). 2: no post-processing, the scene is drawn straight to the screen. Reversible. */
     setLevel(n) { level = n; },
     get level() { return level; },
-    /** MSAA samples of the scene buffer (re-allocates it) */
-    setSamples(n) { if (sceneRT.samples !== n) { sceneRT.samples = n; sceneRT.dispose(); } },
     /** Build the shaders for both passes up front, so nothing hitches mid-run. */
     precompile() {
       renderer.setRenderTarget(sceneRT); renderer.compile(scene, camera); renderer.setRenderTarget(null);
       renderer.setRenderTarget(waterRT); renderer.render(waterScene, quadCam); renderer.setRenderTarget(null);
-      if (features.bloom) runBloom();
       renderer.compile(scene, camera); renderer.compile(compScene, quadCam);
     },
   };

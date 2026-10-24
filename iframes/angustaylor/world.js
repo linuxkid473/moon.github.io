@@ -1,17 +1,16 @@
 // The world around the road: road and stage floor, templates cloned for scenery and obstacles,
 // truss arches with sweeping beams, confetti, and the menu stage Angus stands on.
 import { THREE, mat, mesh, box, canvasTex, signTex, rand, pick, mergeGeos, mergeTree, blobShadow, TEX_SCALE, MAX_ANISOTROPY } from './gfx.js';
-import { createFacade } from './facade.js';
 
 /** The menu stage lives high above the road so nothing from the game shows through. */
 export const STAGE = { x: 0, y: 200, z: 0 };
 
-export function createWorld({ scene, camera, reflection }) {
+export function createWorld({ scene, camera }) {
   /* ---------- road & sky-side props ---------- */
   const roadTex = canvasTex(128, 256, (g, w, h) => {
-    g.fillStyle = '#1c2536';
+    g.fillStyle = '#04060c';
     g.fillRect(0, 0, w, h);
-    g.fillStyle = '#1f4fb8';
+    g.fillStyle = '#2f9bff';
     g.fillRect(4, 0, 6, h);
     g.fillRect(w - 10, 0, 6, h);
     g.fillRect(44, 0, 4, h / 2);     // dashed lane line, top half of each tile
@@ -20,16 +19,16 @@ export function createWorld({ scene, camera, reflection }) {
   roadTex.wrapS = roadTex.wrapT = THREE.RepeatWrapping;
   roadTex.repeat.set(1, 20);
 
-  const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.4, metalness: 0.0 });
-  reflection.applyWet(roadMat);   // wet asphalt: it mirrors the street (reflection.js)
-  const road = mesh(new THREE.PlaneGeometry(8, 200).rotateX(-Math.PI / 2), roadMat);
-  reflection.hide(road);
+  const road = mesh(
+    new THREE.PlaneGeometry(8, 200).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ map: roadTex, emissiveMap: roadTex, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.16, metalness: 0.35 })   // wet asphalt: the lights glint off it
+  );
   road.position.set(0, 0, -60);
   road.castShadow = false;
   scene.add(road);
 
   // Black stage floor either side of the road.
-  const grassMat = new THREE.MeshLambertMaterial({ color: 0x141c30, flatShading: true });
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x0b1020, roughness: 0.2, metalness: 0.3, flatShading: true });
   for (const sx of [-1, 1]) {
     const grass = mesh(new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2), grassMat);
     grass.position.set(sx * 104, -0.02, -60);
@@ -112,7 +111,7 @@ export function createWorld({ scene, camera, reflection }) {
     sciss.add(glowDisc(0xff6a73));
     T.scissorsPickup = sciss;
     const consult = new THREE.Group();
-    consult.add(box(0.9, 0.62, 0.28, mat(0x6b3f1f, { roughness: 0.5 }), 0, 0, 0), box(0.3, 0.12, 0.3, mat(0x2a1a0e), 0, 0.37, 0), box(0.12, 0.1, 0.3, mat(0xd4a017), 0, 0.02, 0.02), glowDisc(0x1f4fb8));
+    consult.add(box(0.9, 0.62, 0.28, mat(0x6b3f1f, { roughness: 0.5 }), 0, 0, 0), box(0.3, 0.12, 0.3, mat(0x2a1a0e), 0, 0.37, 0), box(0.12, 0.1, 0.3, mat(0xd4a017), 0, 0.02, 0.02), glowDisc(0x4d8dff));
     T.consultant = consult;
 
     // tape orbs: glowing red orbs trailing a ribbon of red tape. On a hit the tape wraps him and throws him.
@@ -134,7 +133,7 @@ export function createWorld({ scene, camera, reflection }) {
     T.shot = orb;
 
     // rally-stage props: LED pillars, red searchlight stands, an LED screen and cheering crowds
-    const ledRed = new THREE.MeshBasicMaterial({ color: 0x1f4fb8 });   // (LED strips and searchlights are Liberal blue now)
+    const ledRed = new THREE.MeshBasicMaterial({ color: 0x3b82ff });   // (LED strips and searchlights are blue now)
     T.buildings = [4, 6, 9, 12].map((h) => {
       const p = new THREE.Group();
       p.add(mesh(new THREE.BoxGeometry(3, h, 3).translate(0, h / 2, 0), mat(pick([0x2a2f44, 0x2a3550, 0x26303f]), { emissive: 0x0a1a5a })));
@@ -146,7 +145,7 @@ export function createWorld({ scene, camera, reflection }) {
     tree.add(box(0.25, 3.6, 0.25, mat(0x20232b), 0, 1.8, 0));
     tree.add(mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.6, 8), mat(0x15181f)), mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 8), ledRed));
     tree.children[1].position.y = 3.9; tree.children[2].position.y = 4.2;
-    const spot = new THREE.Mesh(new THREE.ConeGeometry(0.9, 10, 10, 1, true).translate(0, 5, 0), new THREE.MeshBasicMaterial({ color: 0x1b44a8, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    const spot = new THREE.Mesh(new THREE.ConeGeometry(0.9, 10, 10, 1, true).translate(0, 5, 0), new THREE.MeshBasicMaterial({ color: 0x2a6aff, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     spot.position.y = 4.2; spot.rotation.z = 0.25;
     tree.add(spot);
     T.tree = tree;
@@ -177,8 +176,8 @@ export function createWorld({ scene, camera, reflection }) {
     const darkMat = mat(0x0a0d1a);
     for (let i = 0; i < 3; i++) {
       const x = (i - 1) * 0.75, h = 0.9 + ((i * 7) % 3) * 0.1;
-      { const body = mesh(new THREE.CapsuleGeometry(0.27, h - 0.54, 6, 16), darkMat); body.position.set(x, h / 2, 0); body.scale.z = 0.7; crowd.add(body); }
-      const head = mesh(new THREE.SphereGeometry(0.25, 20, 14), darkMat);
+      crowd.add(box(0.6, h, 0.4, darkMat, x, h / 2, 0));
+      const head = mesh(new THREE.SphereGeometry(0.25, 6, 5), darkMat);
       head.position.set(x, h + 0.2, 0);
       crowd.add(head);
       if (i % 2 === 0) crowd.add(box(0.3, 0.1, 0.3, mat(i === 0 ? 0xc8102e : 0x1f4fb8), x, h + 0.42, 0));
@@ -206,7 +205,7 @@ export function createWorld({ scene, camera, reflection }) {
     const LW = 512, LH = 192;
     const draw = (g, img) => {
       g.fillStyle = '#0b2f86'; g.fillRect(0, 0, LW, LH);
-      g.strokeStyle = '#2a5cc8'; g.lineWidth = 8; g.strokeRect(4, 4, LW - 8, LH - 8);
+      g.strokeStyle = '#8fb4ff'; g.lineWidth = 8; g.strokeRect(4, 4, LW - 8, LH - 8);
       g.fillStyle = '#ffffff';
       if (img) {
         const ih = 130, iw = ih * img.naturalWidth / img.naturalHeight;
@@ -291,42 +290,73 @@ export function createWorld({ scene, camera, reflection }) {
     const crowdGeos = [];
     for (let i = 0; i < 26; i++) {
       const x = -30 + i * 2.4 + ((i * 7) % 5) * 0.2;
-      crowdGeos.push(new THREE.CapsuleGeometry(0.8, 1.4, 6, 14).translate(x, 1.5, 6), new THREE.SphereGeometry(0.7, 14, 10).translate(x, 3.1, 6));
+      crowdGeos.push(new THREE.BoxGeometry(1.6, 2.2, 1.0).translate(x, 1.1, 6), new THREE.SphereGeometry(0.7, 6, 5).translate(x, 2.8, 6));
     }
     wall.add(new THREE.Mesh(mergeGeos(crowdGeos), crowdM));   // the whole crowd is a single mesh
     scene.add(wall);
   }
 
+  /* ---------- wet-road reflections: every light throws a long glowing streak towards the camera ---------- */
+  // Flat additive strips lying on the road, bright at the light and fading towards the viewer, softer at the sides.
+  const reflTex = canvasTex(32, 128, (g, w, h) => {
+    const v = g.createLinearGradient(0, 0, 0, h);
+    v.addColorStop(0, 'rgba(255,255,255,1)'); v.addColorStop(0.15, 'rgba(255,255,255,0.7)'); v.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = v; g.fillRect(0, 0, w, h);
+    g.globalCompositeOperation = 'destination-in';   // soften the sides
+    const hz = g.createLinearGradient(0, 0, w, 0);
+    hz.addColorStop(0, 'rgba(0,0,0,0)'); hz.addColorStop(0.5, 'rgba(0,0,0,1)'); hz.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = hz; g.fillRect(0, 0, w, h);
+  });
+  const reflMats = { red: 0x4aa8ff, blue: 0x3d7bff, white: 0xcfe0ff }, reflBase = { red: 0.55, blue: 0.55, white: 0.4 };
+  for (const k in reflMats) reflMats[k] = new THREE.MeshBasicMaterial({ map: reflTex, color: reflMats[k], transparent: true, opacity: reflBase[k], blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  const reflGeo = (w, len) => new THREE.PlaneGeometry(w, len).rotateX(-Math.PI / 2).translate(0, 0, len / 2);   // runs from the light (z = 0) towards the camera
+  function reflection(parent, kind, x, z, w, len) {
+    const m = new THREE.Mesh(reflGeo(w, len), reflMats[kind]);
+    m.position.set(x, 0.045, z);
+    m.userData.keep = true;
+    m.renderOrder = 2;
+    parent.add(m);
+    return m;
+  }
+
   /* ---------- glowing edge lights that scroll past, so you can feel the speed ---------- */
   const edgeGroup = new THREE.Group();
   {
-    const mats = [new THREE.MeshBasicMaterial({ color: 0xff3b4a }), new THREE.MeshBasicMaterial({ color: 0xe8eeff })];
+    const mats = [new THREE.MeshBasicMaterial({ color: 0x4aa8ff }), new THREE.MeshBasicMaterial({ color: 0xe8eeff })];
     const geos = [[], []];
     for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) geos[i % 2].push(new THREE.BoxGeometry(0.16, 0.16, 3).translate(sx * 4.6, 0.12, 20 - i * 10));
     for (let k = 0; k < 2; k++) edgeGroup.add(new THREE.Mesh(mergeGeos(geos[k]), mats[k]));
+    for (let i = 0; i < 16; i++) for (const sx of [-1, 1]) { reflection(edgeGroup, i % 2 ? 'white' : 'red', sx * 3.75, 20 - i * 10 - 1.5, 0.7, 4.5); reflection(edgeGroup, i % 2 ? 'white' : 'red', sx * 4.9, 20 - i * 10 - 1.5, 1.1, 6); }   // the kerb lights glinting on the wet road
     scene.add(edgeGroup);
   }
 
-  /* ---------- tall alley walls: real brick facades with framed, glowing windows (facade.js) ---------- */
+  /* ---------- tall alley walls with lit windows, to give the scene depth ---------- */
   const alleyWalls = [];
   {
-    const base = createFacade();
-    for (const sx of [-1, 1]) {
-      const tex = {};
-      for (const k of Object.keys(base)) {   // each side scrolls on its own: clones share the pixels but not the offset
-        tex[k] = base[k].clone();
-        tex[k].repeat.set(6, 1);
-        tex[k].needsUpdate = true;
+    const wallTex = canvasTex(512, 256, (g, w, h) => {
+      g.fillStyle = '#141a24'; g.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 16) {
+        g.fillStyle = 'rgba(255,255,255,0.045)';
+        for (let x = (y / 16) % 2 ? 0 : 20; x < w; x += 40) g.fillRect(x, y + 1, 38, 14);
       }
-      const wallMat = new THREE.MeshStandardMaterial({
-        map: tex.map, emissiveMap: tex.emissiveMap, emissive: 0xffffff, emissiveIntensity: 2.6,
-        normalMap: tex.normalMap, normalScale: new THREE.Vector2(1.5, 1.5), roughnessMap: tex.roughnessMap, roughness: 1, metalness: 0.04,
-      });
-      const wall = new THREE.Mesh(new THREE.PlaneGeometry(150, 24), wallMat);
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, h - 24, w, 24);   // darker at the bottom, as if it were wet
+      let seed = 5; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let gx = 0; gx < 8; gx++) for (let gy = 0; gy < 5; gy++) {   // lit windows
+        const x = gx * 64 + 14, y = gy * 48 + 14, v = r();
+        if (v < 0.42) { g.fillStyle = v < 0.07 ? '#dbe8ff' : v < 0.12 ? '#4f93ff' : v < 0.2 ? '#5ab4ff' : '#9ec5ff'; g.fillRect(x, y, 30, 22); g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + 14, y, 2, 22); g.fillRect(x, y + 10, 30, 2); }
+      }
+      g.fillStyle = '#3d8bff'; g.fillRect(40, 238, 150, 5);   // a neon strip
+    });
+    for (const sx of [-1, 1]) {
+      const albedo = wallTex.clone(), glow = albedo;   // (one texture now; `glow` is kept as an alias so scrolling stays one line)
+      albedo.wrapS = THREE.RepeatWrapping;
+      albedo.repeat.set(6, 1);
+      albedo.needsUpdate = true;
+      const wall = new THREE.Mesh(new THREE.PlaneGeometry(150, 24), new THREE.MeshBasicMaterial({ map: albedo }));   // unlit: it is a dark wall with lit windows, and it fills a big part of the screen
       wall.rotation.y = -sx * Math.PI / 2;
       wall.position.set(sx * 15, 12, -50);
       scene.add(wall);
-      alleyWalls.push({ tex: Object.values(tex), sx });
+      alleyWalls.push({ albedo, glow, sx });
     }
   }
 
@@ -334,7 +364,7 @@ export function createWorld({ scene, camera, reflection }) {
   const ARCH_N = 5, ARCH_STEP = 24, BULBS = 9;
   const arches = [];
   let bulbGeo = null, glow = null, lastBulbPhase = -1;
-  const BULB_COLS = [[0.12, 0.31, 0.72], [1, 0.23, 0.29], [0.23, 0.15, 0.19], [0.23, 0.15, 0.19]];   // pale pink, red, then dark: the chase pattern
+  const BULB_COLS = [[0.72, 0.85, 1], [0.2, 0.55, 1], [0.1, 0.16, 0.3], [0.1, 0.16, 0.3]];   // pale pink, red, then dark: the chase pattern
   function setBulbs(ph) {
     const c = bulbGeo.attributes.color;
     for (let j = 0; j < BULBS; j++) { const col = BULB_COLS[(j + ph) % 4]; for (let v = 0; v < 24; v++) c.setXYZ(j * 24 + v, col[0], col[1], col[2]); }
@@ -353,7 +383,7 @@ export function createWorld({ scene, camera, reflection }) {
     const bulbVC = new THREE.MeshBasicMaterial({ vertexColors: true });
     const bannerTex = canvasTex(130, 300, (g, w, h) => {
       g.fillStyle = '#0b2f86'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#2a5cc8'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
+      g.strokeStyle = '#8fb4ff'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
       g.fillStyle = '#ffffff'; g.beginPath();
       for (let i = 0; i < 10; i++) { const ang = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 17 : 40; g.lineTo(w / 2 + Math.cos(ang) * r, 90 + Math.sin(ang) * r); }
       g.closePath(); g.fill();
@@ -361,7 +391,7 @@ export function createWorld({ scene, camera, reflection }) {
       g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '900 26px system-ui, sans-serif'; g.fillText('TAX', w / 2, 200); g.fillText('CUTS', w / 2, 232);
     });
     const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, side: THREE.DoubleSide });
-    const lens = new THREE.MeshBasicMaterial({ color: 0x2a5cc8 });
+    const lens = new THREE.MeshBasicMaterial({ color: 0x6aa8ff });
     const beamGeo = new THREE.ConeGeometry(1.1, 7, 12, 1, true).translate(0, -3.5, 0);   // apex at the origin so the beam swings from its lamp
     for (let i = 0; i < ARCH_N; i++) {
       const a = new THREE.Group();
@@ -386,7 +416,7 @@ export function createWorld({ scene, camera, reflection }) {
         housing.position.set(x, 7.0, 0);
         const l = mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 8), lens);
         l.position.set(x, 6.76, 0);
-        const bm = new THREE.MeshBasicMaterial({ color: [0xff2a3a, 0x1b44a8][k], transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+        const bm = new THREE.MeshBasicMaterial({ color: [0x2aa0ff, 0x2a6aff][k], transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
         const pivot = new THREE.Group();
         pivot.position.set(x, 6.75, 0);
         pivot.add(new THREE.Mesh(beamGeo, bm));
@@ -399,11 +429,19 @@ export function createWorld({ scene, camera, reflection }) {
         a.add(pool);
         a.userData.beams.push({ pivot, mat: bm, phase: i * 1.3 + k * 2.1, x, pool });
       }
+      a.userData.refl = [
+        reflection(a, 'blue', 0, 0, 6.2, 11),               // the chasing bulb bar and LED sign
+        reflection(a, 'red', -3, 0, 1.6, 12),               // the red lamp
+        reflection(a, 'blue', 3, 0, 1.6, 12),               // the blue lamp
+        reflection(a, 'white', -5.0, 0, 0.9, 9), reflection(a, 'white', 5.0, 0, 0.9, 9),   // the banners
+        reflection(a, 'blue', -5.8, 0, 1.6, 12), reflection(a, 'blue', 5.8, 0, 1.6, 12),   // the pylons, on the pavement
+        reflection(a, 'red', -8.2, 0, 3.2, 10), reflection(a, 'red', 8.2, 0, 3.2, 10),     // soft wash from the lit buildings
+      ];
       mergeTree(a);   // the truss, lamp housings, lenses, sign and banners become a handful of meshes
       scene.add(a);
       arches.push(a);
     }
-    glow = new THREE.PointLight(0x1b44a8, 120, 18, 2);   // a blue glow over the runner (it follows him to the stage)
+    glow = new THREE.PointLight(0x2a6aff, 120, 18, 2);   // a blue glow over the runner (it follows him to the stage)
     glow.position.set(0, 5.5, 3);
     scene.add(glow);
     setBulbs(0);
@@ -425,7 +463,7 @@ export function createWorld({ scene, camera, reflection }) {
 
     // floor, with an LED edge strip
     add(mesh(new THREE.BoxGeometry(18, 0.4, 9), glossy), 0, -0.2, -0.5);
-    add(box(18, 0.07, 0.07, new THREE.MeshBasicMaterial({ color: 0x1b44a8 }), 0, 0, 0), 0, 0.02, 3.95);
+    add(box(18, 0.07, 0.07, new THREE.MeshBasicMaterial({ color: 0x2a6aff }), 0, 0, 0), 0, 0.02, 3.95);
     add(mesh(new THREE.BoxGeometry(26, 0.2, 9), navy), 0, -0.3, 8.5);
 
     // LED backdrop: big wording, stars and a red band
@@ -453,7 +491,7 @@ export function createWorld({ scene, camera, reflection }) {
     sweepTex.repeat.set(0.35, 1);
     stageAnim.sweep = sweepTex;
     add(mesh(new THREE.PlaneGeometry(14, 6.4), new THREE.MeshBasicMaterial({ map: sweepTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.6 })), 0, 3.7, -4.12);
-    const sideTex = canvasTex(128, 512, (g, w, h) => { g.fillStyle = '#0b2f86'; g.fillRect(0, 0, w, h); g.fillStyle = '#ffffff'; for (let i = 0; i < 6; i++) starPath(g, w / 2, 50 + i * 80, 24); g.fillStyle = '#1f4fb8'; g.fillRect(0, h - 30, w, 30); });
+    const sideTex = canvasTex(128, 512, (g, w, h) => { g.fillStyle = '#0b2f86'; g.fillRect(0, 0, w, h); g.fillStyle = '#ffffff'; for (let i = 0; i < 6; i++) starPath(g, w / 2, 50 + i * 80, 24); g.fillStyle = '#2f6bff'; g.fillRect(0, h - 30, w, 30); });
     for (const s of [-1, 1]) add(mesh(new THREE.PlaneGeometry(2.0, 6.4), led(sideTex)), s * 8.6, 3.7, -4.18);
 
     // LED sign above the backdrop
@@ -468,8 +506,8 @@ export function createWorld({ scene, camera, reflection }) {
     for (let i = 0; i < 7; i++) {
       const x = -7.2 + i * 2.4;
       add(mesh(new THREE.CylinderGeometry(0.2, 0.28, 0.5, 8), mat(0x15181f)), x, 6.85, -1.3);
-      add(mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 8), new THREE.MeshBasicMaterial({ color: 0x2a5cc8 })), x, 6.59, -1.3);
-      const bm = new THREE.MeshBasicMaterial({ color: 0x1b44a8, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      add(mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 8), new THREE.MeshBasicMaterial({ color: 0x6aa8ff })), x, 6.59, -1.3);
+      const bm = new THREE.MeshBasicMaterial({ color: 0x2a6aff, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
       const pivot = new THREE.Group();
       pivot.position.set(x, 6.58, -1.3);
       pivot.add(new THREE.Mesh(beamGeo, bm));
@@ -490,7 +528,7 @@ export function createWorld({ scene, camera, reflection }) {
     }
 
     // lectern with microphones
-    const lecternTex = canvasTex(256, 128, (g, w, h) => { g.fillStyle = '#0b2f86'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; fit(g, 'FIGHTING TAXES', w - 24, 40); g.fillText('FIGHTING TAXES', w / 2, h / 2); });
+    const lecternTex = canvasTex(256, 128, (g, w, h) => { g.fillStyle = '#2f6bff'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; fit(g, 'FIGHTING TAXES', w - 24, 40); g.fillText('FIGHTING TAXES', w / 2, h / 2); });
     add(mesh(new THREE.BoxGeometry(1.5, 1.7, 0.8), mat(0x1a2a5c)), 0.3, 0.85, -1.5);
     add(mesh(new THREE.PlaneGeometry(1.0, 0.5), led(lecternTex)), 0.3, 1.0, -1.09);
     for (const s of [-1, 1]) {
@@ -531,11 +569,9 @@ export function createWorld({ scene, camera, reflection }) {
     for (let row = 0; row < 2; row++) for (let i = 0; i < 20; i++) {
       const x = -9.5 + i * 1.0 + rnd() * 0.4, z = 5.2 + row * 1.5, y = 0.5 + row * 0.15 + rnd() * 0.1;
       const person = new THREE.Group();
-      const head = mesh(new THREE.SphereGeometry(0.24, 24, 16), dark);
-      head.position.y = 0.47;
-      const torso = mesh(new THREE.CapsuleGeometry(0.28, 0.3, 6, 18), dark);
-      torso.scale.z = 0.62;
-      person.add(head, torso);
+      const head = mesh(new THREE.SphereGeometry(0.24, 6, 5), dark);
+      head.position.y = 0.45;
+      person.add(head, box(0.62, 0.55, 0.38, dark, 0, 0, 0));
       if (rnd() < 0.3) person.add(box(0.3, 0.1, 0.3, rnd() < 0.5 ? cap : capRed, 0, 0.66, 0));
       add(person, x, y, z);
       stageAnim.crowd.push({ person, y0: y, phase: rnd() * 6.28 });
@@ -588,11 +624,10 @@ export function createWorld({ scene, camera, reflection }) {
   /** Scroll the road, arches, walls and confetti with the world. `move` is the distance run this step, `tt` is wall-clock seconds. */
   function scroll(move, tt, dist, dt) {
     roadTex.offset.y = (dist / 10) % 1;
-    reflection.uniforms.uScroll.value = dist;
     ledLogoMat.color.setScalar(0.8 + 0.2 * (Math.sin(tt * 1.5) * 0.5 + 0.5));   // the LED signs glow gently
     horizonSweep.offset.x = (tt * 0.04) % 1;   // the red band slides across the far LED wall
     edgeGroup.position.z += move; if (edgeGroup.position.z > 0) edgeGroup.position.z -= 20;   // the pattern repeats every 20 units, so it loops seamlessly
-    for (const aw of alleyWalls) { const d = move / 25 * (aw.sx < 0 ? 1 : -1); for (const t of aw.tex) t.offset.x += d; }   // the walls slide past with the road
+    for (const aw of alleyWalls) { const d = move / 25; aw.albedo.offset.x += aw.sx < 0 ? d : -d; aw.glow.offset.x = aw.albedo.offset.x; }   // the walls slide past with the road
     const cp = confetti.geometry.attributes.position;   // confetti falls, drifts and scrolls with the world (kept ready, but hidden)
     if (confetti.visible) for (let i = 0; i < CONF_N; i++) {
       let y = cp.getY(i) - 1.1 * dt, z = cp.getZ(i) + move;
@@ -601,6 +636,7 @@ export function createWorld({ scene, camera, reflection }) {
       cp.setXYZ(i, cp.getX(i) + Math.sin(tt * 1.5 + i) * 0.4 * dt, y, z);
     }
     cp.needsUpdate = true;
+    for (const k in reflMats) reflMats[k].opacity = reflBase[k] * (0.82 + 0.18 * Math.sin(tt * 2.3 + k.length * 2));   // the reflections ripple a little in the rain
     const bulbPhase = Math.floor(tt * 3);
     if (bulbPhase !== lastBulbPhase) { lastBulbPhase = bulbPhase; setBulbs(bulbPhase); }   // the chasing bulbs (re-uploaded only when the pattern steps)
     for (const a of arches) {   // the truss arches scroll past, and their red beams sweep and pulse
@@ -611,7 +647,7 @@ export function createWorld({ scene, camera, reflection }) {
         b.pivot.rotation.z = Math.sin(tt * 0.5 + b.phase) * 0.5;
         b.pivot.rotation.x = Math.sin(tt * 0.38 + b.phase * 1.6) * 0.35;
         b.mat.opacity = (0.05 + 0.04 * (Math.sin(tt * 1.1 + b.phase * 2) * 0.5 + 0.5)) * near;
-        b.pool.visible = near > 0.05;
+        b.pool.visible = false;   // no spots of light on the road
         b.pool.position.set(b.x + Math.tan(b.pivot.rotation.z) * 6.7, 0.04, -Math.tan(b.pivot.rotation.x) * 6.7);
       }
     }
@@ -622,7 +658,7 @@ export function createWorld({ scene, camera, reflection }) {
   function lowDetail(on = true) {
     if (on === lowDetailOn) return;
     lowDetailOn = on;
-    /* the lights stay on: switching them off made the scene look like the power had gone out */
+    /* the lights and their reflections stay on: switching them off made the scene look like the power had gone out */
   }
 
   return { T, scroll, stage, stageMode, stageAnimate, menuCamera, lowDetail, dotTex };
