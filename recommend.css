@@ -20,3 +20,9 @@
 .rec-send:disabled{opacity:.45;cursor:default}
 .rec-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 .rec-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* the announcement bar: the same slim strip, a touch more colour */
+.rec-note{background:var(--accent);color:#fff;border-bottom:0}
+.rec-note .rec-x{color:rgba(255,255,255,.8)}
+.rec-note .rec-x:hover{background:rgba(255,255,255,.2);color:#fff}
+.rec-note .rec-msg{font-weight:600;text-align:center}

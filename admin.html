@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin | Moon Games</title>
+<link rel="icon" href="resources/download.png">
+<meta name="theme-color" content="#5e5ce6">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="admin.css">
+<script>
+(function () {   // the same theme the rest of the site is using
+  try { var t = localStorage.getItem("moongames.theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+})();
+</script>
+</head>
+<body class="adm-body">
+<div id="app" aria-live="polite"><p class="adm-boot">Loading…</p></div>
+<script type="module" src="admin.js"></script>
+</body>
+</html>

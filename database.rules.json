@@ -16,15 +16,29 @@
     "rooms": { ".read": true, ".write": true },
     "comments": { ".read": true, ".write": true },
     "recommendations": {
-      ".read": false,
+      ".read": "auth != null && auth.token.email === 'ultrabsd@moongames.app'",
       ".indexOn": ["ts"],
       "$id": {
-        ".write": "!data.exists() && newData.exists()",
-        ".validate": "newData.hasChildren(['text', 'ts']) && newData.child('ts').val() === now",
+        ".write": "(!data.exists() && newData.exists()) || (auth != null && auth.token.email === 'ultrabsd@moongames.app')",
+        ".validate": "newData.hasChildren(['text', 'ts']) && (newData.child('ts').val() === now || (data.exists() && newData.child('ts').val() === data.child('ts').val()))",
         "text": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 1800" },
         "ts": { ".validate": "newData.isNumber()" },
+        "done": { ".validate": "newData.isBoolean() && (auth != null && auth.token.email === 'ultrabsd@moongames.app')" },
         "$other": { ".validate": false }
       }
+    },
+    "site": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email === 'ultrabsd@moongames.app'",
+      "announcement": {
+        ".validate": "newData.hasChildren(['text', 'enabled'])",
+        "text": { ".validate": "newData.isString() && newData.val().length <= 200" },
+        "enabled": { ".validate": "newData.isBoolean()" },
+        "ts": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      },
+      "recsEnabled": { ".validate": "newData.isBoolean()" },
+      "$other": { ".validate": false }
     },
     "messages": { ".read": true, ".write": true, ".indexOn": ["timestamp"] },
     "typing": { ".read": true, "$id": { ".write": true } },
