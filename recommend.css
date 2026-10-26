@@ -1,0 +1,22 @@
+/* "What game do you want to see next?": a slim, dismissible strip at the very top. */
+.rec{background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12.5px;color:var(--text-secondary)}
+.rec-bar{display:flex;align-items:center;gap:10px;max-width:1400px;margin:0 auto;padding:5px 16px;min-height:28px;box-sizing:border-box}
+.rec-msg{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec-open{flex:none;background:none;border:0;padding:2px 4px;font:inherit;font-weight:600;color:var(--accent-2);cursor:pointer;border-radius:6px}
+.rec-open:hover{text-decoration:underline}
+.rec-x{flex:none;background:none;border:0;width:22px;height:22px;padding:0;border-radius:50%;font-size:15px;line-height:1;color:var(--text-tertiary);cursor:pointer}
+.rec-x:hover{background:var(--border);color:var(--text-primary)}
+.rec-form{max-width:720px;margin:0 auto;padding:4px 16px 12px;box-sizing:border-box}
+.rec-form[hidden]{display:none}
+.rec-form textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:70px;max-height:220px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.4;
+  color:var(--text-primary);background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-s)}
+.rec-form textarea:focus{outline:2px solid var(--accent-2);outline-offset:1px}
+.rec-row{display:flex;align-items:center;gap:12px;margin-top:8px}
+.rec-count{font-variant-numeric:tabular-nums}
+.rec-count.over{color:var(--danger);font-weight:600}
+.rec-status{flex:1;min-width:0}
+.rec-status.err{color:var(--danger)}
+.rec-send{flex:none;background:var(--accent);color:#fff;border:0;border-radius:var(--radius-pill);padding:7px 18px;font:inherit;font-weight:600;cursor:pointer}
+.rec-send:disabled{opacity:.45;cursor:default}
+.rec-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.rec-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

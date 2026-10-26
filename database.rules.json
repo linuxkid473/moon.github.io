@@ -15,6 +15,17 @@
     "stats": { ".read": true, ".write": true },
     "rooms": { ".read": true, ".write": true },
     "comments": { ".read": true, ".write": true },
+    "recommendations": {
+      ".read": false,
+      ".indexOn": ["ts"],
+      "$id": {
+        ".write": "!data.exists() && newData.exists()",
+        ".validate": "newData.hasChildren(['text', 'ts']) && newData.child('ts').val() === now",
+        "text": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 1800" },
+        "ts": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      }
+    },
     "messages": { ".read": true, ".write": true, ".indexOn": ["timestamp"] },
     "typing": { ".read": true, "$id": { ".write": true } },
 
