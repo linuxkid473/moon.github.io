@@ -1652,7 +1652,8 @@
       "arcade",
       "casual"
     ],
-    "exclusive": true
+    "exclusive": true,
+    "boost": true
   },
   {
     "id": "lobotomy",

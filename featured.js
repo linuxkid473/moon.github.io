@@ -16,8 +16,10 @@ export function pickFeaturedGame(allGames, seed = "day"){
   const key = seed === "week"
     ? now.getFullYear() + "-W" + String(Math.ceil((((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + new Date(now.getFullYear(), 0, 1).getDay() + 1) / 7))
     : now.toISOString().slice(0, 10);
-  const index = hashString(key) % sorted.length;
-  return sorted[index];
+  // exclusives get extra tickets in the daily draw (the boosted one a bit more); it is still one pick, the same for everyone that day
+  const pool = [];
+  for (const g of sorted) for (let i = 0; i < (g.boost ? 3 : g.exclusive ? 2 : 1); i++) pool.push(g);
+  return pool[hashString(key) % pool.length];
 }
 
 export async function getFeaturedStats(gameId){

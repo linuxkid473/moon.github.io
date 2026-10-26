@@ -42,6 +42,7 @@ import { pickFeaturedGame, getFeaturedStats } from "./featured.js";
       <div class="card-thumb skeleton">
         <img loading="lazy" src="${game.img}" alt="" onerror="this.closest('.card-thumb').classList.add('skeleton'); this.style.display='none';"
              onload="this.classList.add('loaded'); this.closest('.card-thumb').classList.remove('skeleton');">
+        ${game.exclusive ? `<span class="card-exclusive">Exclusive</span>` : ""}
         ${isExternal ? `<span class="card-external" title="Opens in a new tab">${SVG_EXTERNAL}</span>` : ""}
         <div class="card-play">${SVG_PLAY}</div>
       </div>
@@ -65,8 +66,23 @@ import { pickFeaturedGame, getFeaturedStats } from "./featured.js";
     return true;
   }
 
+  /* A gentle nudge for the Moon Games exclusives (the ones marked "exclusive" in games.json; "boost" puts one first among them).
+     In the default order they are spread through the first few rows, every other slot, rather than bunched at the top; in a search
+     they win ties after games whose title starts with what was typed. Nothing else is reordered. */
+  const NUDGE_AT = 4;
+  function ranked(list){
+    const rank = (g) => (g.boost ? 2 : g.exclusive ? 1 : 0);
+    if (query){
+      const starts = (g) => (g.title.toLowerCase().startsWith(query) ? 0 : 1);
+      return [...list].sort((a, b) => starts(a) - starts(b) || rank(b) - rank(a));
+    }
+    const ex = list.filter(g => g.exclusive).sort((a, b) => rank(b) - rank(a)), out = list.filter(g => !g.exclusive);
+    ex.forEach((g, i) => out.splice(Math.min(NUDGE_AT + i * 2, out.length), 0, g));
+    return out;
+  }
+
   function render(){
-    const filtered = ALL_GAMES.filter(matches);
+    const filtered = ranked(ALL_GAMES.filter(matches));
     grid.innerHTML = filtered.map(cardTemplate).join("");
     emptyState.classList.toggle("show", filtered.length === 0);
     resultsMeta.textContent = query || activeGenre !== "all"
