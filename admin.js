@@ -1,14 +1,16 @@
 /* Moon Games admin console (admin.html).
-   Signs in with the site's normal account (username + password) and only opens for the user "ultrabsd". That check here is just so the
-   page knows what to show: the real lock is in database.rules.json, where reading and changing recommendations and the site settings is
-   only allowed for ultrabsd's account, so nobody else can get at them by editing this file.
+   Signs in with the site's normal account (username + password), or with Google, and only opens for the user "ultrabsd" or the admin's
+   Gmail. That check here is just so the page knows what to show: the real lock is in database.rules.json, where reading and changing
+   recommendations and the site settings is only allowed for those two accounts, so nobody else can get at them by editing this file.
    Tabs: Overview, Recommendations (what people want to see next), Comments (moderation), Games, Site (announcement and switches).
    For testing, on localhost only, admin.html?demo shows the whole panel with made-up data and never touches Firebase. */
 import { database } from "./firebase-init.js";
-import { onAuthChange, logIn, logOut } from "./auth.js";
+import { onAnyAuthChange, logIn, logOut, signInWithGoogle } from "./auth.js";
 import { ref, get, onValue, set, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-const ADMIN_EMAIL = "ultrabsd@moongames.app";
+const ADMIN_EMAIL = "ultrabsd@moongames.app";         // the site account
+const ADMIN_GMAIL = "nathan.vihaan@gmail.com";           // or this Google account (only counts once Google has verified it)
+const isAdminUser = (u) => { const e = (u?.email || "").toLowerCase(); return e === ADMIN_EMAIL || (e === ADMIN_GMAIL && u.emailVerified === true); };
 const DB_URL = "https://moongames-eba7f-default-rtdb.asia-southeast1.firebasedatabase.app";
 const DEMO = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).has("demo");
 
@@ -125,8 +127,13 @@ function renderLogin(message = "") {
   const form = h("form", { class: "adm-center", onsubmit: async (e) => {
     e.preventDefault(); err.textContent = ""; go.disabled = true;
     try { await logIn(u.value, p.value); } catch (x) { err.textContent = x.message || "Couldn't sign in."; go.disabled = false; }
-  } }, h("h1", { text: "Admin" }), h("p", { text: "Sign in with your Moon Games account." }),
-  h("label", { for: "admUser", text: "Username" }), u, h("label", { for: "admPass", text: "Password" }), p, go, err);
+  } }, h("h1", { text: "Admin" }), h("p", { text: "Sign in with your Moon Games account, or with Google." }),
+  h("label", { for: "admUser", text: "Username" }), u, h("label", { for: "admPass", text: "Password" }), p, go,
+  h("div", { class: "adm-or", text: "or" }),
+  h("button", { class: "adm-btn", type: "button", text: "Sign in with Google", style: "width:100%;padding:10px", onclick: async () => {
+    err.textContent = "";
+    try { await signInWithGoogle(); } catch (x) { err.textContent = x.message; }
+  } }), err);
   root.replaceChildren(form);
   u.focus();
 }
@@ -305,10 +312,10 @@ async function siteTab(el) {
 async function start() {
   try { games = await (await fetch("games.json")).json(); } catch { games = []; }
   if (DEMO) { user = { name: "ultrabsd" }; view = "panel"; renderPanel(); return; }
-  onAuthChange((u) => {
+  onAnyAuthChange((u) => {
     const email = (u?.email || "").toLowerCase();
     if (!u) { view = "login"; stopRecs?.(); stopRecs = null; recs = undefined; renderLogin(); }
-    else if (email === ADMIN_EMAIL) { user = { name: email.split("@")[0] }; if (view !== "panel") { view = "panel"; renderPanel(); } }
+    else if (isAdminUser(u)) { user = { name: email.endsWith("@moongames.app") ? email.split("@")[0] : email }; if (view !== "panel") { view = "panel"; renderPanel(); } }
     else { view = "denied"; stopRecs?.(); stopRecs = null; renderDenied(); }
   });
 }

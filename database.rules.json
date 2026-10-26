@@ -16,20 +16,20 @@
     "rooms": { ".read": true, ".write": true },
     "comments": { ".read": true, ".write": true },
     "recommendations": {
-      ".read": "auth != null && auth.token.email === 'ultrabsd@moongames.app'",
+      ".read": "auth != null && (auth.token.email === 'ultrabsd@moongames.app' || (auth.token.email === 'nathan.vihaan@gmail.com' && auth.token.email_verified === true))",
       ".indexOn": ["ts"],
       "$id": {
-        ".write": "(!data.exists() && newData.exists()) || (auth != null && auth.token.email === 'ultrabsd@moongames.app')",
+        ".write": "(!data.exists() && newData.exists()) || (auth != null && (auth.token.email === 'ultrabsd@moongames.app' || (auth.token.email === 'nathan.vihaan@gmail.com' && auth.token.email_verified === true)))",
         ".validate": "newData.hasChildren(['text', 'ts']) && (newData.child('ts').val() === now || (data.exists() && newData.child('ts').val() === data.child('ts').val()))",
         "text": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 1800" },
         "ts": { ".validate": "newData.isNumber()" },
-        "done": { ".validate": "newData.isBoolean() && (auth != null && auth.token.email === 'ultrabsd@moongames.app')" },
+        "done": { ".validate": "newData.isBoolean() && (auth != null && (auth.token.email === 'ultrabsd@moongames.app' || (auth.token.email === 'nathan.vihaan@gmail.com' && auth.token.email_verified === true)))" },
         "$other": { ".validate": false }
       }
     },
     "site": {
       ".read": true,
-      ".write": "auth != null && auth.token.email === 'ultrabsd@moongames.app'",
+      ".write": "auth != null && (auth.token.email === 'ultrabsd@moongames.app' || (auth.token.email === 'nathan.vihaan@gmail.com' && auth.token.email_verified === true))",
       "announcement": {
         ".validate": "newData.hasChildren(['text', 'enabled'])",
         "text": { ".validate": "newData.isString() && newData.val().length <= 200" },

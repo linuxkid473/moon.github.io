@@ -10,7 +10,8 @@
    public-read, so it must never hold credentials). */
 import { app } from "./firebase-init.js";
 import {
-  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+  GoogleAuthProvider, signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const auth = getAuth(app);
@@ -66,10 +67,30 @@ export function logOut(){
   return signOut(auth);
 }
 
+/* Only the site's own username accounts (name@moongames.app) are players. A Google sign-in (the admin's Gmail, used only on
+   admin.html) is NOT a player, so the rest of the site sees it as signed out and never shows its address as a display name. */
+const isSiteAccount = (u) => !!u && String(u.email || "").toLowerCase().endsWith(EMAIL_DOMAIN);
+
 export function getCurrentAuthUser(){
-  return auth.currentUser;
+  return isSiteAccount(auth.currentUser) ? auth.currentUser : null;
 }
 
 export function onAuthChange(cb){
+  return onAuthStateChanged(auth, (u) => cb(isSiteAccount(u) ? u : null));
+}
+
+/* Every kind of sign-in, Google included: for the admin page and the admin link only. */
+export function onAnyAuthChange(cb){
   return onAuthStateChanged(auth, cb);
+}
+
+export async function signInWithGoogle(){
+  try {
+    return (await signInWithPopup(auth, new GoogleAuthProvider())).user;
+  } catch (err) {
+    if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") throw new Error("");
+    if (err?.code === "auth/unauthorized-domain") throw new Error("Google sign-in isn't switched on for this address yet (Firebase > Authentication > Settings > Authorized domains).");
+    if (err?.code === "auth/operation-not-allowed") throw new Error("Google sign-in isn't switched on yet (Firebase > Authentication > Sign-in method > Google).");
+    throw new Error("Couldn't sign in with Google.");
+  }
 }

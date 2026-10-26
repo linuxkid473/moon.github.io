@@ -1,9 +1,11 @@
-/* A small "Admin" link in the nav, shown only while signed in as the admin account (ultrabsd). Nobody else ever sees it. */
-import { onAuthChange } from "./auth.js";
+/* A small "Admin" link in the nav, shown only while signed in as the admin (the ultrabsd account, or the admin's verified Gmail). Nobody else ever sees it. */
+import { onAnyAuthChange } from "./auth.js";
 
-onAuthChange((user) => {
+const isAdmin = (u) => { const e = (u?.email || "").toLowerCase(); return e === "ultrabsd@moongames.app" || (e === "nathan.vihaan@gmail.com" && u.emailVerified === true); };
+
+onAnyAuthChange((user) => {
   const existing = document.getElementById("adminLink");
-  if (!user || (user.email || "").toLowerCase() !== "ultrabsd@moongames.app") { existing?.remove(); return; }
+  if (!isAdmin(user)) { existing?.remove(); return; }
   if (existing) return;
   const actions = document.querySelector(".nav-actions");
   if (!actions) return;

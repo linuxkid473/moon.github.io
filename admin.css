@@ -75,3 +75,6 @@
 .adm-note{font-size:13px;color:var(--text-secondary);margin:6px 0}
 .adm-ok{color:#1c9a55;font-size:13px;margin-left:10px}
 .adm-demo{background:#ffd34d;color:#10204a;font-size:12px;font-weight:700;text-align:center;padding:4px}
+
+.adm-or{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--text-tertiary);font-size:12px}
+.adm-or::before,.adm-or::after{content:"";flex:1;height:1px;background:var(--border)}
