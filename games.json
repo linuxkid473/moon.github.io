@@ -1836,5 +1836,16 @@
       "multiplayer"
     ],
     "exclusive": true
+  },
+  {
+    "id": "oliviarodrigo",
+    "href": "iframes/oliviarodrigo.html",
+    "img": "resources/oliviarodrigo.jpg",
+    "title": "Olivia Rodrigo: Fighting Sabrina",
+    "genres": [
+      "arcade",
+      "casual"
+    ],
+    "exclusive": true
   }
 ]
